@@ -15,6 +15,43 @@ import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import ResetDataButton from "@/components/reset-data-button";
 
+interface MatchedTrade {
+  id: string;
+  symbol: string;
+  buyDate: Date;
+  buyTime: string;
+  buyPrice: number;
+  sellDate: Date;
+  sellTime: string;
+  sellPrice: number;
+  quantity: number;
+  commission: number;
+  profit: number;
+  duration?: number | null;
+  // Additional database fields
+  createdAt?: Date;
+  updatedAt?: Date;
+  userId?: string;
+  buyTradeId?: string | null;
+  sellTradeId?: string | null;
+}
+
+interface OpenPosition {
+  id: string;
+  symbol: string;
+  type: string;
+  date: Date;
+  time: string;
+  price: number;
+  commission: number;
+  remainingQuantity: number;
+  tradeId?: string | null;
+  // Additional database fields
+  createdAt?: Date;
+  updatedAt?: Date;
+  userId?: string;
+}
+
 export default async function TradesPage() {
   const { userId } = await auth();
 
@@ -26,8 +63,8 @@ export default async function TradesPage() {
 
   // Get or create user and their trades data
   let userRecord = null;
-  let matchedTrades: any[] = [];
-  let openPositions: any[] = [];
+  let matchedTrades: MatchedTrade[] = [];
+  let openPositions: OpenPosition[] = [];
 
   try {
     userRecord = await prisma.user.findUnique({
@@ -65,8 +102,8 @@ export default async function TradesPage() {
       console.log("Created new user in database:", userRecord.id);
     }
 
-    matchedTrades = userRecord?.matchedTrades || [];
-    openPositions = userRecord?.openPositions || [];
+    matchedTrades = (userRecord?.matchedTrades as MatchedTrade[]) || [];
+    openPositions = (userRecord?.openPositions as OpenPosition[]) || [];
   } catch (error) {
     console.error("Error fetching/creating user:", error);
   }
@@ -220,118 +257,115 @@ export default async function TradesPage() {
             <CardContent>
               <ScrollArea className="h-[400px]">
                 <div className="space-y-6">
-                  {(Object.entries(tradesByDate) as [string, any[]][]).map(
-                    ([dateKey, dayTrades]) => (
-                      <div key={dateKey}>
-                        <div className="flex items-center gap-2 mb-3">
-                          <h3 className="text-lg font-semibold">
-                            {format(new Date(dateKey), "MMMM dd, yyyy")}
-                          </h3>
-                          <Badge variant="outline">
-                            {dayTrades.length} trades
-                          </Badge>
-                          <Badge
-                            variant={
-                              dayTrades.reduce(
-                                (sum: number, t: any) => sum + t.profit,
-                                0
-                              ) >= 0
-                                ? "default"
-                                : "destructive"
-                            }
+                  {(
+                    Object.entries(tradesByDate) as [string, MatchedTrade[]][]
+                  ).map(([dateKey, dayTrades]) => (
+                    <div key={dateKey}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="text-lg font-semibold">
+                          {format(new Date(dateKey), "MMMM dd, yyyy")}
+                        </h3>
+                        <Badge variant="outline">
+                          {dayTrades.length} trades
+                        </Badge>
+                        <Badge
+                          variant={
+                            dayTrades.reduce(
+                              (sum: number, t: MatchedTrade) => sum + t.profit,
+                              0
+                            ) >= 0
+                              ? "default"
+                              : "destructive"
+                          }
+                        >
+                          {formatCurrency(
+                            dayTrades.reduce(
+                              (sum: number, t: MatchedTrade) => sum + t.profit,
+                              0
+                            )
+                          )}
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-2">
+                        {dayTrades.map((trade: MatchedTrade) => (
+                          <div
+                            key={trade.id}
+                            className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
                           >
-                            {formatCurrency(
-                              dayTrades.reduce(
-                                (sum: number, t: any) => sum + t.profit,
-                                0
-                              )
-                            )}
-                          </Badge>
-                        </div>
-
-                        <div className="space-y-2">
-                          {dayTrades.map((trade: any) => (
-                            <div
-                              key={trade.id}
-                              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div>
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium text-sm">
-                                      {trade.symbol}
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      MATCHED
-                                    </Badge>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Buy:{" "}
-                                    {format(new Date(trade.buyDate), "MM/dd")}{" "}
-                                    {trade.buyTime} <br />
-                                    Sell:{" "}
-                                    {format(
-                                      new Date(trade.sellDate),
-                                      "MM/dd"
-                                    )}{" "}
-                                    {trade.sellTime}
-                                  </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium text-sm">
+                                    {trade.symbol}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    MATCHED
+                                  </Badge>
                                 </div>
-
-                                <div>
-                                  <div className="text-sm">
-                                    <span className="text-muted-foreground">
-                                      Buy:
-                                    </span>{" "}
-                                    ₹{trade.buyPrice.toFixed(2)}
-                                  </div>
-                                  <div className="text-sm">
-                                    <span className="text-muted-foreground">
-                                      Sell:
-                                    </span>{" "}
-                                    ₹{trade.sellPrice.toFixed(2)}
-                                  </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Buy:{" "}
+                                  {format(new Date(trade.buyDate), "MM/dd")}{" "}
+                                  {trade.buyTime} <br />
+                                  Sell:{" "}
+                                  {format(
+                                    new Date(trade.sellDate),
+                                    "MM/dd"
+                                  )}{" "}
+                                  {trade.sellTime}
                                 </div>
+                              </div>
 
-                                <div>
-                                  <div className="text-sm">
-                                    <span className="text-muted-foreground">
-                                      Qty:
-                                    </span>{" "}
-                                    {trade.quantity.toLocaleString()}
-                                  </div>
-                                  <div className="text-sm">
-                                    <span className="text-muted-foreground">
-                                      Commission:
-                                    </span>{" "}
-                                    ₹{trade.commission.toFixed(2)}
-                                  </div>
+                              <div>
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">
+                                    Buy:
+                                  </span>{" "}
+                                  ₹{trade.buyPrice.toFixed(2)}
                                 </div>
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">
+                                    Sell:
+                                  </span>{" "}
+                                  ₹{trade.sellPrice.toFixed(2)}
+                                </div>
+                              </div>
 
-                                <div className="flex flex-col items-end">
-                                  <div
-                                    className={`text-lg font-bold ${
-                                      trade.profit >= 0
-                                        ? "text-green-600"
-                                        : "text-red-600"
-                                    }`}
-                                  >
-                                    {formatCurrency(trade.profit)}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {trade.duration && `${trade.duration} min`}
-                                  </div>
+                              <div>
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">
+                                    Qty:
+                                  </span>{" "}
+                                  {trade.quantity.toLocaleString()}
+                                </div>
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">
+                                    Commission:
+                                  </span>{" "}
+                                  ₹{trade.commission.toFixed(2)}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-end">
+                                <div
+                                  className={`text-lg font-bold ${
+                                    trade.profit >= 0
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }`}
+                                >
+                                  {formatCurrency(trade.profit)}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {trade.duration && `${trade.duration} min`}
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
                       </div>
-                    )
-                  )}
+                    </div>
+                  ))}
                 </div>
               </ScrollArea>
             </CardContent>
@@ -350,7 +384,7 @@ export default async function TradesPage() {
             <CardContent>
               <ScrollArea className="h-[300px]">
                 <div className="space-y-2">
-                  {openPositions.map((position: any) => (
+                  {openPositions.map((position: OpenPosition) => (
                     <div
                       key={position.id}
                       className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"

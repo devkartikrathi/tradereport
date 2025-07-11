@@ -36,7 +36,7 @@ export default async function ReportsPage() {
                 Advanced Reports Coming Soon
               </h3>
               <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                We're working on advanced reporting features including P&L
+                We&apos;re working on advanced reporting features including P&L
                 statements, tax reports, and performance summaries tailored for
                 Indian markets.
               </p>

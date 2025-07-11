@@ -377,7 +377,7 @@ export default function AnalyticsPage() {
                   <div className="space-y-3">
                     {data.chartData.symbolPerformance
                       .slice(0, 5)
-                      .map((symbol, index) => (
+                      .map((symbol) => (
                         <div
                           key={symbol.symbol}
                           className="flex items-center justify-between"

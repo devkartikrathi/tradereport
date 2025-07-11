@@ -287,7 +287,7 @@ function findBestMatch(variations: string[], headerLookup: Map<string, string>):
 
 function mapRecordToTrade(record: Record<string, string>, mapping: Record<string, string>, rowNumber: number): Partial<EnhancedParsedTrade> | null {
   try {
-    const mapped: Record<string, any> = {};
+    const mapped: Record<string, string | number | Date> = {};
     
     // Map basic required fields
     if (mapping.symbol && record[mapping.symbol]) {

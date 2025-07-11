@@ -4,9 +4,20 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 export const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
+interface TradingData {
+  hasData: boolean;
+  totalTrades?: number;
+  totalNetProfitLoss?: number;
+  winRate?: number;
+  avgProfitLoss?: number;
+  hourlyPerformance?: Array<{ hour: number; avgPnL: number; total: number; count: number }>;
+  daylyPerformance?: Array<{ day: string; avgPnL: number; total: number; count: number }>;
+  symbolPerformance?: Array<{ symbol: string; avgPnL: number; total: number; count: number }>;
+}
+
 export async function generateChatResponse(
   message: string, 
-  tradingData: any, 
+  tradingData: TradingData, 
   csvData?: string
 ): Promise<string> {
   try {
@@ -36,7 +47,7 @@ export async function analyzeCsvData(csvContent: string, userQuestion?: string):
   }
 }
 
-function createChatPrompt(message: string, tradingData: any, csvData?: string): string {
+function createChatPrompt(message: string, tradingData: TradingData, csvData?: string): string {
   const basePrompt = `You are TradePulse AI, an expert Indian trading advisor specializing in the Indian stock market (NSE, BSE), crypto, and forex trading. You understand Indian trading terminology, market hours (9:15 AM to 3:30 PM), and regulatory environment (SEBI guidelines).
 
 **Trading Context:**
@@ -133,7 +144,7 @@ Use Indian number formatting for currency (₹1,23,456) and provide context suit
   return prompt;
 }
 
-export async function generateTradingInsights(tradingData: any): Promise<string> {
+export async function generateTradingInsights(tradingData: TradingData): Promise<string> {
   try {
     const prompt = `As TradePulse AI, analyze this Indian trader's performance data and provide personalized insights:
 

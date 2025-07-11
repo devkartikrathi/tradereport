@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { generateChatResponse } from '@/lib/gemini';
-import { formatCurrency } from '@/lib/utils';
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     // Get CSV data if available for detailed analysis
     let csvData = '';
     if (user.trades.length > 0) {
-      csvData = generateCSVFromTrades(user.trades.slice(0, 50)); // Last 50 trades
+      csvData = generateCSVFromTrades(user.trades.slice(0, 50) as TradeForCSV[]); // Last 50 trades
     }
 
     // Generate AI response using Google Gemini
@@ -57,7 +57,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateContextData(user: any) {
+interface UserWithRelations {
+  analytics: {
+    totalTrades: number;
+    totalNetProfitLoss: number;
+    winRate: number;
+    avgProfitLossPerTrade: number;
+  } | null;
+  trades: {
+    date: Date;
+    time: string;
+    profitLoss: number;
+    symbol: string;
+  }[];
+}
+
+function generateContextData(user: UserWithRelations) {
   const analytics = user.analytics;
   const trades = user.trades;
   
@@ -129,7 +144,21 @@ function generateContextData(user: any) {
   };
 }
 
-function generateCSVFromTrades(trades: any[]): string {
+interface TradeForCSV {
+  tradeId: string;
+  date: Date;
+  time: string;
+  symbol: string;
+  tradeType: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  commission: number;
+  profitLoss: number;
+  duration?: string | number | null;
+}
+
+function generateCSVFromTrades(trades: TradeForCSV[]): string {
   if (!trades.length) return '';
   
   const headers = ['TradeID', 'Date', 'Time', 'Symbol', 'TradeType', 'EntryPrice', 'ExitPrice', 'Quantity', 'Commission', 'ProfitLoss', 'Duration'];

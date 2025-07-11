@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { format, startOfDay, endOfDay, getDay, getHours } from 'date-fns';
-import { Trade, Analytics, ChartData, EquityCurvePoint } from '@/lib/types';
+import { Trade, EquityCurvePoint } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
