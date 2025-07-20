@@ -25,24 +25,16 @@ const isPublicRoute = createRouteMatcher([
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  // Allow access to public routes
-  const publicRoutes = ['/'];
-  
-  if (publicRoutes.includes(req.nextUrl.pathname)) {
+  // Allow access to public routes without authentication
+  if (isPublicRoute(req)) {
     return;
   }
 
-  // Handle API routes
-  if (req.nextUrl.pathname.startsWith('/api/')) {
-    const { userId } = await auth();
-    if (!userId) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-    return;
+  // For protected routes, require authentication
+  if (isProtectedRoute(req)) {
+    await auth.protect();
   }
 
-  // Protect all other routes
-  await auth.protect();
   return;
 });
 
