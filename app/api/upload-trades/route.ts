@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { parseUniversalFile, EnhancedParsedTrade } from '@/lib/universal-file-parser';
+import { parseUnifiedFile, UnifiedParsedTrade } from '@/lib/unified-file-parser';
 import { matchTrades, RawTrade, TradeMatchingResult } from '@/lib/trade-matcher';
 import { analyzeCsvData } from '@/lib/gemini';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,13 +34,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File size must be less than 10MB' }, { status: 400 });
     }
 
-    // Parse file with universal parser (supports CSV, XLSX, XLS)
-    const parseResult = await parseUniversalFile(file);
+    // Parse file with unified parser (supports CSV, XLSX, XLS)
+    const parseResult = await parseUnifiedFile(file);
     
-    console.log('Parse result:', parseResult);
+    logger.info('File parsing completed', { 
+      fileName: file.name,
+      totalRows: parseResult.totalRows,
+      validRows: parseResult.validRows,
+      errorCount: parseResult.errors.length,
+      fileType: parseResult.fileType
+    });
     
     if (parseResult.errors.length > 0 && parseResult.validRows === 0) {
-      console.log('Parse errors:', parseResult.errors);
+      logger.error('No valid trades found in file', { 
+        errors: parseResult.errors.slice(0, 5), // Log first 5 errors
+        fileName: file.name
+      });
       return NextResponse.json({ 
         error: 'No valid trades found in file',
         details: parseResult.errors.slice(0, 10) // Limit error messages
@@ -68,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert parsed trades to RawTrade format for matching
-    const newRawTrades: RawTrade[] = parseResult.trades.map((trade: EnhancedParsedTrade) => ({
+    const newRawTrades: RawTrade[] = parseResult.trades.map((trade: UnifiedParsedTrade) => ({
       date: trade.date.toISOString().split('T')[0],
       symbol: trade.symbol,
       type: trade.tradeType.toUpperCase() as "BUY" | "SELL",
@@ -79,11 +89,16 @@ export async function POST(request: NextRequest) {
       tradeId: trade.tradeId,
     }));
 
-    console.log('Upload API Debug:');
-    console.log('- Parsed trades count:', parseResult.trades.length);
-    console.log('- Raw trades for matching:', newRawTrades.length);
-    console.log('- Sample raw trade:', newRawTrades[0]);
-    console.log('- Trade types found:', [...new Set(newRawTrades.map(t => t.type))]);
+    logger.debug('Trade preparation for matching', {
+      parsedTradesCount: parseResult.trades.length,
+      rawTradesCount: newRawTrades.length,
+      tradeTypes: [...new Set(newRawTrades.map(t => t.type))],
+      sampleTrade: newRawTrades[0] ? {
+        symbol: newRawTrades[0].symbol,
+        type: newRawTrades[0].type,
+        quantity: newRawTrades[0].quantity
+      } : null
+    });
 
     // If not incremental, clear existing data
     if (!isIncremental) {
@@ -111,18 +126,20 @@ export async function POST(request: NextRequest) {
     const allRawTrades = [...existingOpenTrades, ...newRawTrades];
 
     // **STEP 1: MATCH TRADES FIRST**
-    console.log('Starting trade matching...');
-    console.log('- Total trades to match:', allRawTrades.length);
-    console.log('- Existing open positions:', existingOpenTrades.length);
-    console.log('- New trades:', newRawTrades.length);
+    logger.info('Starting trade matching', {
+      totalTradesToMatch: allRawTrades.length,
+      existingOpenPositions: existingOpenTrades.length,
+      newTrades: newRawTrades.length
+    });
     
     const matchingResult: TradeMatchingResult = matchTrades(allRawTrades);
     
-    console.log(`Trade matching completed:
-      - Matched trades: ${matchingResult.totalMatched}
-      - Open positions: ${matchingResult.totalUnmatched}
-      - Net profit: ₹${matchingResult.netProfit}`);
-    console.log('- Sample matched trade:', matchingResult.matchedTrades[0]);
+    logger.info('Trade matching completed', {
+      matchedTrades: matchingResult.totalMatched,
+      openPositions: matchingResult.totalUnmatched,
+      netProfit: matchingResult.netProfit,
+      hasMatchedTrades: matchingResult.matchedTrades.length > 0
+    });
 
     // Store the trade matching results in database
     await prisma.$transaction(async (tx) => {
@@ -176,7 +193,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Also store individual raw trades for reference
-      const tradesToInsert = parseResult.trades.map((trade: EnhancedParsedTrade) => ({
+      const tradesToInsert = parseResult.trades.map((trade: UnifiedParsedTrade) => ({
         tradeId: trade.tradeId,
         userId: user.id,
         date: trade.date,
@@ -220,7 +237,9 @@ ${matchingResult.matchedTrades.slice(0, 10).map(t =>
         aiInsights = await analyzeCsvData(analysisData, "Analyze this trading performance focusing on matched trades and provide insights");
       }
     } catch (error) {
-      console.log('AI analysis failed, continuing without insights:', error);
+      logger.warn('AI analysis failed, continuing without insights', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
 
     return NextResponse.json({

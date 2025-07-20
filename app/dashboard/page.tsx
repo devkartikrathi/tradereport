@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, Activity, DollarSign } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import ResetDataButton from "@/components/reset-data-button";
+import { logger } from "@/lib/logger";
 
 export default async function Dashboard() {
   const { userId } = await auth();
@@ -36,7 +37,7 @@ export default async function Dashboard() {
         },
         include: { analytics: true },
       });
-      console.log("Created new user in database:", userRecord.id);
+      logger.info("New user created in database", { userId: userRecord.id });
     }
 
     analytics = userRecord?.analytics;
@@ -196,7 +197,7 @@ export default async function Dashboard() {
                     href="/upload"
                     className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                   >
-                    Upload CSV Data
+                    Upload Trading Data
                   </a>
                   <a
                     href="/chat"
@@ -210,7 +211,7 @@ export default async function Dashboard() {
                   <p className="text-sm text-muted-foreground">
                     Zerodha, Angel One, ICICI Direct, Upstox, 5Paisa, Groww,
                     HDFC Securities, Kotak Securities, and more. Our AI
-                    automatically detects and maps your broker&apos;s CSV
+                    automatically detects and maps your broker&apos;s data
                     format.
                   </p>
                 </div>

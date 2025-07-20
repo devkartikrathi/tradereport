@@ -191,7 +191,7 @@ function generateFallbackResponse(error: string): string {
 
 💡 **What you can do**:
 - Try asking your question again in a different way
-- Upload your CSV data if you haven't already
+- Upload your trading data files (CSV, XLSX, XLS) if you haven't already
 - Check our help section for common questions
 
 I'm designed to help you analyze your trading performance with insights about:

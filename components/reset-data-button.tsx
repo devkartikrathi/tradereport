@@ -80,7 +80,7 @@ export default function ResetDataButton({
           <AlertDialogDescription>
             This action cannot be undone. This will permanently delete all your
             trade data, analytics, and performance metrics from our servers. You
-            will need to re-upload your CSV files to see your data again.
+            will need to re-upload your trading files to see your data again.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

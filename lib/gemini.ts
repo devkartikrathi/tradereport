@@ -65,7 +65,7 @@ ${tradingData.hasData ? `
 - Best Trading Hour: ${tradingData.hourlyPerformance?.[0]?.hour}:00
 - Best Trading Day: ${tradingData.daylyPerformance?.[0]?.day}
 - Top Performing Symbol: ${tradingData.symbolPerformance?.[0]?.symbol}
-` : 'No trading data available yet. User needs to upload CSV data first.'}
+  ` : 'No trading data available yet. User needs to upload trading data files first.'}
 
 ${csvData ? `**Raw CSV Data for Deep Analysis:**\n${csvData}\n\n` : ''}
 

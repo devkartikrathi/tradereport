@@ -30,7 +30,7 @@ const navigation = [
     name: "Upload Data",
     href: "/upload",
     icon: Upload,
-    description: "Upload your trade data CSV files",
+    description: "Upload your trade data files (CSV, XLSX, XLS)",
   },
   {
     name: "Analytics",

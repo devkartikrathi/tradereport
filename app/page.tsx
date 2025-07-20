@@ -165,13 +165,13 @@ export default function LandingPage() {
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                   <Zap className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Smart CSV Analysis</CardTitle>
+                <CardTitle>Smart File Analysis</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground">
-                  Upload your trading data from any Indian broker and get
-                  instant AI-powered analysis with actionable insights to
-                  improve your trading strategy.
+                  Upload your trading data files (CSV, XLSX, XLS) from any
+                  Indian broker and get instant AI-powered analysis with
+                  actionable insights to improve your trading strategy.
                 </p>
               </CardContent>
             </Card>

@@ -62,7 +62,7 @@ export default function SignUpPage() {
                 <Zap className="h-4 w-4 text-primary" />
               </div>
               <span className="text-sm">
-                Instant CSV analysis and processing
+                Instant file analysis and processing (CSV, XLSX, XLS)
               </span>
             </div>
           </div>

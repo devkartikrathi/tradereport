@@ -99,7 +99,7 @@ export default async function TradesPage() {
           analytics: true,
         },
       });
-      console.log("Created new user in database:", userRecord.id);
+      // User creation logged by dashboard - no need to duplicate logging here
     }
 
     matchedTrades = (userRecord?.matchedTrades as MatchedTrade[]) || [];
@@ -132,7 +132,7 @@ export default async function TradesPage() {
                 href="/upload"
                 className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
-                Upload CSV Data
+                Upload Trading Data
               </a>
             </CardContent>
           </Card>
@@ -173,7 +173,7 @@ export default async function TradesPage() {
             <div className="flex gap-2">
               <button className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                Export Data
               </button>
               <ResetDataButton variant="destructive" />
             </div>
