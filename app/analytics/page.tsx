@@ -24,6 +24,7 @@ import {
   Clock,
   BarChart3,
   RefreshCw,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface AnalyticsData {
@@ -166,9 +167,23 @@ export default function AnalyticsPage() {
         <div className="p-8">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">No Data Available</h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-4">
               Please upload your trade data to view analytics.
             </p>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Don&apos;t have trade data? Download our sample file to test the
+                analytics:
+              </p>
+              <a
+                href="/sample-trades.csv"
+                download
+                className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Download Sample File
+              </a>
+            </div>
           </div>
         </div>
       </Sidebar>

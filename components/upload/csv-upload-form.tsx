@@ -44,21 +44,7 @@ const expectedColumns = [
   "Optional: ISIN, ETT, GST, STT, SEBI, Stamp Duty",
 ];
 
-const brokerOptions = [
-  { value: "zerodha", label: "Zerodha" },
-  { value: "angelone", label: "Angel One" },
-  { value: "upstox", label: "Upstox" },
-  { value: "icicidirect", label: "ICICI Direct" },
-  { value: "fivepaisa", label: "5Paisa" },
-  { value: "groww", label: "Groww" },
-  { value: "hdfc", label: "HDFC Securities" },
-  { value: "kotak", label: "Kotak Securities" },
-  { value: "paytmmoney", label: "Paytm Money" },
-  { value: "motilal", label: "Motilal Oswal" },
-  { value: "other", label: "Other Broker" },
-];
-
-export default function CSVUploadForm() {
+export default function UniversalUploadForm() {
   const router = useRouter();
   const [uploadState, setUploadState] = useState<UploadState>({
     isUploading: false,
@@ -67,13 +53,14 @@ export default function CSVUploadForm() {
     success: false,
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedBroker, setSelectedBroker] = useState<string>("");
+
   const [dragActive, setDragActive] = useState(false);
 
   const validateFile = useCallback((file: File): string | null => {
     // Check file type
-    if (!file.name.endsWith(".csv")) {
-      return "Please upload a CSV file";
+    const fileExtension = file.name.toLowerCase().split(".").pop();
+    if (!["csv", "xlsx", "xls"].includes(fileExtension || "")) {
+      return "Please upload a CSV, XLSX, or XLS file";
     }
 
     // Check file size (max 10MB)
@@ -143,9 +130,6 @@ export default function CSVUploadForm() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      if (selectedBroker) {
-        formData.append("broker", selectedBroker);
-      }
 
       const response = await fetch("/api/upload-trades", {
         method: "POST",
@@ -198,8 +182,19 @@ export default function CSVUploadForm() {
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Upload Trade Data</h1>
         <p className="text-muted-foreground">
-          Upload your CSV file to analyze your trading performance
+          Upload your trading data file (CSV, XLSX, or XLS) to analyze your
+          performance
         </p>
+        <div className="mt-4">
+          <a
+            href="/sample-trades.csv"
+            download
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Download Sample File
+          </a>
+        </div>
       </div>
 
       {/* Expected Format Card */}
@@ -207,12 +202,12 @@ export default function CSVUploadForm() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
-            Expected CSV Format
+            Expected File Format
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-3">
-            Your CSV file should contain the following columns:
+            Your file should contain the following columns:
           </p>
           <div className="grid grid-cols-2 gap-2 text-sm">
             {expectedColumns.map((column) => (
@@ -224,39 +219,10 @@ export default function CSVUploadForm() {
           </div>
           <div className="mt-4 p-3 bg-muted rounded-md">
             <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> TradePulse automatically detects your
-              broker&apos;s format using AI. Supports all major Indian brokers
-              including the ones listed below.
+              <strong>Note:</strong> TradePulse automatically detects and maps
+              your column headers using AI. Supports CSV, XLSX, and XLS files
+              from any broker or platform.
             </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Broker Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Select Your Broker (Optional)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Help us better analyze your data by selecting your trading
-              platform:
-            </p>
-            <select
-              value={selectedBroker}
-              onChange={(e) => setSelectedBroker(e.target.value)}
-              className="w-full p-3 border border-input rounded-md bg-background text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-            >
-              <option value="">Auto-detect broker (recommended)</option>
-              {brokerOptions.map((broker) => (
-                <option key={broker.value} value={broker.value}>
-                  {broker.label}
-                </option>
-              ))}
-            </select>
           </div>
         </CardContent>
       </Card>
@@ -279,18 +245,21 @@ export default function CSVUploadForm() {
               onDrop={handleDrop}
             >
               <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-semibold mb-2">Upload CSV File</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                Upload Trading File
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Drag and drop your CSV file here, or click to select
+                Drag and drop your file here, or click to select (CSV, XLSX,
+                XLS)
               </p>
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={handleFileChange}
                 className="hidden"
-                id="csv-upload"
+                id="file-upload"
               />
-              <label htmlFor="csv-upload">
+              <label htmlFor="file-upload">
                 <Button variant="outline" className="cursor-pointer" asChild>
                   <span>Select File</span>
                 </Button>

@@ -32,10 +32,15 @@ export default function DailyPnLChart({
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    } catch (error) {
+      console.error("Error formatting date:", dateString, error);
+      return dateString;
+    }
   };
 
   const CustomTooltip = ({
@@ -72,6 +77,24 @@ export default function DailyPnLChart({
     return null;
   };
 
+  if (!data || data.length === 0) {
+    return (
+      <Card className="chart-enter hover-lift">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center">
+            <p className="text-muted-foreground">No data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="chart-enter hover-lift">
       <CardHeader>
@@ -81,7 +104,7 @@ export default function DailyPnLChart({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={data}
@@ -98,11 +121,7 @@ export default function DailyPnLChart({
                 className="text-muted-foreground"
               />
               <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="pnl"
-                fill="hsl(var(--primary))"
-                radius={[2, 2, 0, 0]}
-              />
+              <Bar dataKey="pnl" fill="#3b82f6" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

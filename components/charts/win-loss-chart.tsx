@@ -55,6 +55,24 @@ export default function WinLossChart({
     return `${percentage}%`;
   };
 
+  if (!data || data.length === 0) {
+    return (
+      <Card className="chart-enter hover-lift">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChartIcon className="h-5 w-5" />
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center">
+            <p className="text-muted-foreground">No data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="chart-enter hover-lift">
       <CardHeader>
@@ -64,7 +82,7 @@ export default function WinLossChart({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie

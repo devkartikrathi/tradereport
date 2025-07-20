@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/navigation/sidebar";
-import CSVUploadForm from "@/components/upload/csv-upload-form";
+import UniversalUploadForm from "@/components/upload/csv-upload-form";
 
 export default async function UploadPage() {
   const { userId } = await auth();
@@ -13,7 +13,7 @@ export default async function UploadPage() {
   return (
     <Sidebar>
       <div className="p-8">
-        <CSVUploadForm />
+        <UniversalUploadForm />
       </div>
     </Sidebar>
   );

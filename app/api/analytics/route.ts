@@ -2,7 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { format, startOfDay, endOfDay, getDay, getHours } from 'date-fns';
-import { Trade, EquityCurvePoint } from '@/lib/types';
+import { EquityCurvePoint } from '@/lib/types';
+
+interface MatchedTrade {
+  id: string;
+  userId: string;
+  symbol: string;
+  buyDate: Date;
+  sellDate: Date;
+  buyTime: string | null;
+  sellTime: string | null;
+  quantity: number;
+  buyPrice: number;
+  sellPrice: number;
+  profit: number;
+  commission: number;
+  buyTradeId: string | null;
+  sellTradeId: string | null;
+  duration: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,15 +37,24 @@ export async function GET(request: NextRequest) {
       where: { clerkId: userId },
       include: {
         analytics: true,
-        trades: {
-          orderBy: { date: 'asc' }
-        }
+        matchedTrades: {
+          orderBy: { sellDate: 'asc' }
+        },
+        trades: true,
+        openPositions: true
       }
     });
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    console.log('Analytics API Debug:');
+    console.log('- User ID:', user.id);
+    console.log('- Total trades:', user.trades.length);
+    console.log('- Matched trades:', user.matchedTrades.length);
+    console.log('- Open positions:', user.openPositions.length);
+    console.log('- Analytics record:', !!user.analytics);
 
     // Get query parameters for filtering
     const { searchParams } = new URL(request.url);
@@ -34,13 +63,13 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
 
     // Filter trades by date range
-    let filteredTrades = user.trades;
+    let filteredTrades = user.matchedTrades;
     
     if (startDate && endDate) {
       const start = startOfDay(new Date(startDate));
       const end = endOfDay(new Date(endDate));
-      filteredTrades = user.trades.filter(trade => 
-        trade.date >= start && trade.date <= end
+      filteredTrades = user.matchedTrades.filter(trade => 
+        trade.sellDate >= start && trade.sellDate <= end
       );
     } else {
       // Apply default period filtering
@@ -63,7 +92,7 @@ export async function GET(request: NextRequest) {
           break;
       }
       
-      filteredTrades = user.trades.filter(trade => trade.date >= filterDate);
+      filteredTrades = user.matchedTrades.filter(trade => trade.sellDate >= filterDate);
     }
 
     // Calculate real-time metrics for filtered trades
@@ -72,14 +101,16 @@ export async function GET(request: NextRequest) {
     // Generate chart data
     const chartData = generateChartData(filteredTrades);
 
+
+
     return NextResponse.json({
       analytics: user.analytics || analytics,
       chartData,
       summary: {
         totalTrades: filteredTrades.length,
         dateRange: {
-          start: filteredTrades.length > 0 ? filteredTrades[0].date : null,
-          end: filteredTrades.length > 0 ? filteredTrades[filteredTrades.length - 1].date : null
+          start: filteredTrades.length > 0 ? filteredTrades[0].sellDate : null,
+          end: filteredTrades.length > 0 ? filteredTrades[filteredTrades.length - 1].sellDate : null
         }
       }
     });
@@ -93,7 +124,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function calculateAnalytics(trades: Trade[]) {
+function calculateAnalytics(trades: MatchedTrade[]) {
   if (trades.length === 0) {
     return {
       totalNetProfitLoss: 0,
@@ -119,11 +150,11 @@ function calculateAnalytics(trades: Trade[]) {
   }
 
   const totalTrades = trades.length;
-  const winningTrades = trades.filter(t => t.profitLoss > 0).length;
-  const losingTrades = trades.filter(t => t.profitLoss < 0).length;
-  const totalNetProfitLoss = trades.reduce((sum, t) => sum + t.profitLoss, 0);
-  const grossProfit = trades.filter(t => t.profitLoss > 0).reduce((sum, t) => sum + t.profitLoss, 0);
-  const grossLoss = Math.abs(trades.filter(t => t.profitLoss < 0).reduce((sum, t) => sum + t.profitLoss, 0));
+  const winningTrades = trades.filter(t => t.profit > 0).length;
+  const losingTrades = trades.filter(t => t.profit < 0).length;
+  const totalNetProfitLoss = trades.reduce((sum, t) => sum + t.profit, 0);
+  const grossProfit = trades.filter(t => t.profit > 0).reduce((sum, t) => sum + t.profit, 0);
+  const grossLoss = Math.abs(trades.filter(t => t.profit < 0).reduce((sum, t) => sum + t.profit, 0));
   
   const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
   const lossRate = totalTrades > 0 ? (losingTrades / totalTrades) * 100 : 0;
@@ -140,7 +171,7 @@ function calculateAnalytics(trades: Trade[]) {
   const drawdowns: number[] = [];
   
   for (const trade of trades) {
-    runningPnL += trade.profitLoss;
+    runningPnL += trade.profit;
     peak = Math.max(peak, runningPnL);
     const drawdown = peak - runningPnL;
     drawdowns.push(drawdown);
@@ -157,11 +188,11 @@ function calculateAnalytics(trades: Trade[]) {
   let currentLossStreak = 0;
   
   for (const trade of trades) {
-    if (trade.profitLoss > 0) {
+    if (trade.profit > 0) {
       currentWinStreak++;
       currentLossStreak = 0;
       longestWinStreak = Math.max(longestWinStreak, currentWinStreak);
-    } else if (trade.profitLoss < 0) {
+    } else if (trade.profit < 0) {
       currentLossStreak++;
       currentWinStreak = 0;
       longestLossStreak = Math.max(longestLossStreak, currentLossStreak);
@@ -171,8 +202,8 @@ function calculateAnalytics(trades: Trade[]) {
   // Calculate profitable/loss days
   const dailyPnL = new Map<string, number>();
   for (const trade of trades) {
-    const dateKey = trade.date.toISOString().split('T')[0];
-    dailyPnL.set(dateKey, (dailyPnL.get(dateKey) || 0) + trade.profitLoss);
+    const dateKey = trade.sellDate.toISOString().split('T')[0];
+    dailyPnL.set(dateKey, (dailyPnL.get(dateKey) || 0) + trade.profit);
   }
   
   const profitableDays = Array.from(dailyPnL.values()).filter(pnl => pnl > 0).length;
@@ -201,36 +232,36 @@ function calculateAnalytics(trades: Trade[]) {
   };
 }
 
-function generateChartData(trades: Trade[]) {
-  if (trades.length === 0) {
-    return {
-      equityCurve: [],
-      dailyPnL: [],
-      winLossDistribution: [],
-      profitLossDistribution: [],
-      hourlyPerformance: [],
-      weeklyPerformance: [],
-      symbolPerformance: []
-    };
-  }
+function generateChartData(trades: MatchedTrade[]) {
+      if (trades.length === 0) {
+      return {
+        equityCurve: [],
+        dailyPnL: [],
+        winLossDistribution: [],
+        profitLossDistribution: [],
+        hourlyPerformance: [],
+        weeklyPerformance: [],
+        symbolPerformance: []
+      };
+    }
 
   // Equity Curve
   const equityCurve: EquityCurvePoint[] = [];
   let runningPnL = 0;
   for (const trade of trades) {
-    runningPnL += trade.profitLoss;
+    runningPnL += trade.profit;
     equityCurve.push({
-      date: format(new Date(trade.date), 'yyyy-MM-dd'),
+      date: format(new Date(trade.sellDate), 'yyyy-MM-dd'),
       value: runningPnL,
-      trade: trade.profitLoss
+      trade: trade.profit
     });
   }
 
   // Daily P&L
   const dailyPnLMap = new Map<string, number>();
   for (const trade of trades) {
-    const dateKey = format(new Date(trade.date), 'yyyy-MM-dd');
-    dailyPnLMap.set(dateKey, (dailyPnLMap.get(dateKey) || 0) + trade.profitLoss);
+    const dateKey = format(new Date(trade.sellDate), 'yyyy-MM-dd');
+    dailyPnLMap.set(dateKey, (dailyPnLMap.get(dateKey) || 0) + trade.profit);
   }
   
   const dailyPnL = Array.from(dailyPnLMap.entries()).map(([date, pnl]) => ({
@@ -240,22 +271,22 @@ function generateChartData(trades: Trade[]) {
   }));
 
   // Win/Loss Distribution
-  const winningTrades = trades.filter(t => t.profitLoss > 0).length;
-  const losingTrades = trades.filter(t => t.profitLoss < 0).length;
+  const winningTrades = trades.filter(t => t.profit > 0).length;
+  const losingTrades = trades.filter(t => t.profit < 0).length;
   const winLossDistribution = [
     { name: 'Winning Trades', value: winningTrades, color: '#22c55e' },
     { name: 'Losing Trades', value: losingTrades, color: '#ef4444' }
   ];
 
   // Profit/Loss Distribution (histogram)
-  const profitLossDistribution = createHistogram(trades.map(t => t.profitLoss));
+  const profitLossDistribution = createHistogram(trades.map(t => t.profit));
 
   // Hourly Performance
   const hourlyMap = new Map<number, { pnl: number, count: number }>();
   for (const trade of trades) {
-    const hour = getHours(new Date(`${trade.date}T${trade.time}`));
+    const hour = getHours(new Date(`${trade.sellDate}T${trade.sellTime || '00:00'}`));
     const current = hourlyMap.get(hour) || { pnl: 0, count: 0 };
-    hourlyMap.set(hour, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
+    hourlyMap.set(hour, { pnl: current.pnl + trade.profit, count: current.count + 1 });
   }
   
   const hourlyPerformance = Array.from(hourlyMap.entries()).map(([hour, data]) => ({
@@ -269,9 +300,9 @@ function generateChartData(trades: Trade[]) {
   const weeklyMap = new Map<number, { pnl: number, count: number }>();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   for (const trade of trades) {
-    const day = getDay(new Date(trade.date));
+    const day = getDay(new Date(trade.sellDate));
     const current = weeklyMap.get(day) || { pnl: 0, count: 0 };
-    weeklyMap.set(day, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
+    weeklyMap.set(day, { pnl: current.pnl + trade.profit, count: current.count + 1 });
   }
   
   const weeklyPerformance = Array.from(weeklyMap.entries()).map(([day, data]) => ({
@@ -285,7 +316,7 @@ function generateChartData(trades: Trade[]) {
   const symbolMap = new Map<string, { pnl: number, count: number }>();
   for (const trade of trades) {
     const current = symbolMap.get(trade.symbol) || { pnl: 0, count: 0 };
-    symbolMap.set(trade.symbol, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
+    symbolMap.set(trade.symbol, { pnl: current.pnl + trade.profit, count: current.count + 1 });
   }
   
   const symbolPerformance = Array.from(symbolMap.entries())

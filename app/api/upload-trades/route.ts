@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { parseEnhancedCSV, EnhancedParsedTrade } from '@/lib/enhanced-csv-parser';
+import { parseUniversalFile, EnhancedParsedTrade } from '@/lib/universal-file-parser';
 import { matchTrades, RawTrade, TradeMatchingResult } from '@/lib/trade-matcher';
 import { analyzeCsvData } from '@/lib/gemini';
 
@@ -13,10 +13,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get the uploaded file and broker info
+    // Get the uploaded file
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const brokerHint = formData.get('broker') as string | null;
     const isIncremental = formData.get('incremental') === 'true'; // For adding more data
 
     if (!file) {
@@ -24,8 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
-    if (!file.name.endsWith('.csv')) {
-      return NextResponse.json({ error: 'Please upload a CSV file' }, { status: 400 });
+    const fileExtension = file.name.toLowerCase().split('.').pop();
+    if (!['csv', 'xlsx', 'xls'].includes(fileExtension || '')) {
+      return NextResponse.json({ error: 'Please upload a CSV, XLSX, or XLS file' }, { status: 400 });
     }
 
     // Validate file size (10MB limit)
@@ -33,15 +33,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File size must be less than 10MB' }, { status: 400 });
     }
 
-    // Read file content
-    const csvContent = await file.text();
+    // Parse file with universal parser (supports CSV, XLSX, XLS)
+    const parseResult = await parseUniversalFile(file);
     
-    // Parse CSV with enhanced AI-powered column mapping
-    const parseResult = await parseEnhancedCSV(csvContent);
+    console.log('Parse result:', parseResult);
     
     if (parseResult.errors.length > 0 && parseResult.validRows === 0) {
+      console.log('Parse errors:', parseResult.errors);
       return NextResponse.json({ 
-        error: 'No valid trades found in CSV',
+        error: 'No valid trades found in file',
         details: parseResult.errors.slice(0, 10) // Limit error messages
       }, { status: 400 });
     }
@@ -79,6 +79,12 @@ export async function POST(request: NextRequest) {
       tradeId: trade.tradeId,
     }));
 
+    console.log('Upload API Debug:');
+    console.log('- Parsed trades count:', parseResult.trades.length);
+    console.log('- Raw trades for matching:', newRawTrades.length);
+    console.log('- Sample raw trade:', newRawTrades[0]);
+    console.log('- Trade types found:', [...new Set(newRawTrades.map(t => t.type))]);
+
     // If not incremental, clear existing data
     if (!isIncremental) {
       await prisma.$transaction(async (tx) => {
@@ -106,12 +112,17 @@ export async function POST(request: NextRequest) {
 
     // **STEP 1: MATCH TRADES FIRST**
     console.log('Starting trade matching...');
+    console.log('- Total trades to match:', allRawTrades.length);
+    console.log('- Existing open positions:', existingOpenTrades.length);
+    console.log('- New trades:', newRawTrades.length);
+    
     const matchingResult: TradeMatchingResult = matchTrades(allRawTrades);
     
     console.log(`Trade matching completed:
       - Matched trades: ${matchingResult.totalMatched}
       - Open positions: ${matchingResult.totalUnmatched}
       - Net profit: ₹${matchingResult.netProfit}`);
+    console.log('- Sample matched trade:', matchingResult.matchedTrades[0]);
 
     // Store the trade matching results in database
     await prisma.$transaction(async (tx) => {
@@ -219,8 +230,7 @@ ${matchingResult.matchedTrades.slice(0, 10).map(t =>
         validRows: parseResult.validRows,
         errors: parseResult.errors.length,
         uploaded: parseResult.trades.length,
-        brokerDetected: parseResult.brokerDetected || brokerHint,
-        brokerHint: brokerHint,
+        fileType: parseResult.fileType,
         columnMapping: parseResult.columnMapping
       },
       matching: {
