@@ -59,7 +59,10 @@ export default function ResetDataButton({
         toast.error(data.error || "Failed to reset data");
       }
     } catch (error) {
-      console.error("Error resetting data:", error);
+      // Log error in development, use proper logging in production
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Error resetting data:", error);
+      }
       toast.error("Failed to reset data. Please try again.");
     } finally {
       setIsLoading(false);

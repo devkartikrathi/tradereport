@@ -52,7 +52,9 @@ function generateId(): string {
 }
 
 function calculateDuration(buyDate: string, sellDate: string, buyTime?: string, sellTime?: string): number | undefined {
-  if (!buyTime || !sellTime) return undefined;
+  if (!buyTime || !sellTime) {
+    return undefined;
+  }
   
   try {
     const buyDateTime = new Date(`${buyDate} ${buyTime}`);
@@ -128,8 +130,12 @@ export function matchTrades(rawTrades: RawTrade[]): TradeMatchingResult {
       }
 
       // Remove fully matched trades
-      if (buy.remainingQty === 0) buys.shift();
-      if (sell.remainingQty === 0) sells.shift();
+      if (buy.remainingQty === 0) {
+        buys.shift();
+      }
+      if (sell.remainingQty === 0) {
+        sells.shift();
+      }
     }
 
     // Add remaining unmatched buys as open long positions

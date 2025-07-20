@@ -310,7 +310,9 @@ function generateChartData(trades: Trade[]) {
 }
 
 function createHistogram(values: number[], bins = 10) {
-  if (values.length === 0) return [];
+  if (values.length === 0) {
+    return [];
+  }
   
   const min = Math.min(...values);
   const max = Math.max(...values);

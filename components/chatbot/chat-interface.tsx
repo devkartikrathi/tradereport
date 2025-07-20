@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import {
   Send,
   Bot,
@@ -18,6 +15,11 @@ import {
   Calendar,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -26,7 +28,13 @@ interface Message {
   isLoading?: boolean;
 }
 
-const suggestedQuestions = [
+interface SuggestedQuestion {
+  icon: React.ComponentType<{ className?: string }>;
+  question: string;
+  category: string;
+}
+
+const suggestedQuestions: SuggestedQuestion[] = [
   {
     icon: TrendingUp,
     question: "What's my overall trading performance this year?",
@@ -76,7 +84,9 @@ export default function ChatInterface() {
   }, [messages]);
 
   const handleSendMessage = async (message: string) => {
-    if (!message.trim() || isLoading) return;
+    if (!message.trim() || isLoading) {
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),

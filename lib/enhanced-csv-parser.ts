@@ -298,14 +298,22 @@ function mapRecordToTrade(record: Record<string, string>, mapping: Record<string
     
     if (mapping.quantity && record[mapping.quantity]) {
       mapped.quantity = parseFloat(String(record[mapping.quantity]).replace(/,/g, ''));
-      if (isNaN(mapped.quantity)) throw new Error('Invalid quantity');
+      if (isNaN(mapped.quantity)) {
+        throw new Error('Invalid quantity');
+      }
     } else {
       throw new Error('Missing required quantity');
     }
     
     if (mapping.tradeType && record[mapping.tradeType]) {
       const type = String(record[mapping.tradeType]).toLowerCase().trim();
-      mapped.tradeType = type.includes('buy') ? 'BUY' : type.includes('sell') ? 'SELL' : type.toUpperCase();
+      if (type.includes('buy')) {
+        mapped.tradeType = 'BUY';
+      } else if (type.includes('sell')) {
+        mapped.tradeType = 'SELL';
+      } else {
+        mapped.tradeType = type.toUpperCase();
+      }
     } else {
       throw new Error('Missing required trade type');
     }

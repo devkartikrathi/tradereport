@@ -99,13 +99,20 @@ export default async function TradesPage() {
           analytics: true,
         },
       });
-      console.log("Created new user in database:", userRecord.id);
+      // Log successful user creation for debugging in development only
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Created new user in database:", userRecord.id);
+      }
     }
 
     matchedTrades = (userRecord?.matchedTrades as MatchedTrade[]) || [];
     openPositions = (userRecord?.openPositions as OpenPosition[]) || [];
   } catch (error) {
-    console.error("Error fetching/creating user:", error);
+    // Log error in development, use proper logging in production
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Error fetching/creating user:", error);
+    }
+    // You should implement proper logging here for production
   }
 
   if (!matchedTrades.length && !openPositions.length) {
