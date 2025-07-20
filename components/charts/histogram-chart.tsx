@@ -2,8 +2,8 @@
 
 import React from "react";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,13 +12,13 @@ import {
   TooltipProps,
 } from "recharts";
 
-import { TrendingUp } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EquityCurvePoint } from "@/lib/types";
+import { HistogramPoint } from "@/lib/types";
 
-interface EquityCurveChartProps {
-  data: EquityCurvePoint[];
+interface HistogramChartProps {
+  data: HistogramPoint[];
   title?: string;
   height?: number;
 }
@@ -35,17 +35,6 @@ const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
-const formatDate = (dateString: string): string => {
-  try {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
-};
-
 const CustomTooltip: React.FC<TooltipProps<number, string>> = ({
   active,
   payload,
@@ -55,39 +44,33 @@ const CustomTooltip: React.FC<TooltipProps<number, string>> = ({
     return null;
   }
 
-  const data = payload[0].payload as EquityCurvePoint;
+  const data = payload[0].payload as HistogramPoint;
   
   return (
     <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
-      <p className="text-sm font-medium">{formatDate(label)}</p>
+      <p className="text-sm font-medium">Range: {data.range}</p>
       <p className="text-sm text-primary">
-        Portfolio Value:{" "}
-        <span className="font-bold">{formatCurrency(data.value)}</span>
+        Trades: <span className="font-bold">{data.count}</span>
       </p>
-      <p
-        className={`text-sm ${
-          data.trade >= 0 ? "text-green-600" : "text-red-600"
-        }`}
-      >
-        Trade P&L:{" "}
-        <span className="font-bold">{formatCurrency(data.trade)}</span>
+      <p className="text-sm text-muted-foreground">
+        From {formatCurrency(data.minValue)} to {formatCurrency(data.maxValue)}
       </p>
     </div>
   );
 };
 
-export default function EquityCurveChart({
+export default function HistogramChart({
   data,
-  title = "Equity Curve",
-  height = 400,
-}: EquityCurveChartProps) {
+  title = "Profit/Loss Distribution",
+  height = 300,
+}: HistogramChartProps) {
   // Validate and filter data
   const validData = data.filter(item => 
     item && 
-    typeof item.value === 'number' && 
-    !isNaN(item.value) &&
-    typeof item.date === 'string' &&
-    item.date.length > 0
+    typeof item.count === 'number' && 
+    item.count > 0 &&
+    typeof item.range === 'string' &&
+    item.range.length > 0
   );
 
   // If no valid data, show empty state
@@ -96,16 +79,15 @@ export default function EquityCurveChart({
       <Card className="chart-enter hover-lift">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
+            <BarChart3 className="h-5 w-5" />
             {title}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+          <div className="flex items-center justify-center h-[300px] text-muted-foreground">
             <div className="text-center">
-              <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No equity data available</p>
-              <p className="text-sm">Upload trades to see your equity curve</p>
+              <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No distribution data available</p>
             </div>
           </div>
         </CardContent>
@@ -113,44 +95,38 @@ export default function EquityCurveChart({
     );
   }
 
-  // Determine line color based on overall performance
-  const isPositive = validData.length > 0 && validData[validData.length - 1].value >= (validData[0]?.value || 0);
-  const lineColor = isPositive ? "#22c55e" : "#ef4444";
-
   return (
     <Card className="chart-enter hover-lift">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
+          <BarChart3 className="h-5 w-5" />
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart
+          <BarChart
             data={validData}
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis
-              dataKey="date"
-              tickFormatter={formatDate}
+              dataKey="range"
               className="text-muted-foreground"
+              angle={-45}
+              textAnchor="end"
+              height={80}
             />
             <YAxis
-              tickFormatter={formatCurrency}
               className="text-muted-foreground"
             />
             <Tooltip content={<CustomTooltip />} />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke={lineColor}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4, fill: lineColor }}
+            <Bar
+              dataKey="count"
+              fill="hsl(var(--primary))"
+              radius={[2, 2, 0, 0]}
             />
-          </LineChart>
+          </BarChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>

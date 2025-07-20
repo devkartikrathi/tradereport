@@ -105,13 +105,17 @@ export async function POST(request: NextRequest) {
     const allRawTrades = [...existingOpenTrades, ...newRawTrades];
 
     // **STEP 1: MATCH TRADES FIRST**
-    console.log('Starting trade matching...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Starting trade matching...');
+    }
     const matchingResult: TradeMatchingResult = matchTrades(allRawTrades);
     
-    console.log(`Trade matching completed:
-      - Matched trades: ${matchingResult.totalMatched}
-      - Open positions: ${matchingResult.totalUnmatched}
-      - Net profit: ₹${matchingResult.netProfit}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Trade matching completed:
+        - Matched trades: ${matchingResult.totalMatched}
+        - Open positions: ${matchingResult.totalUnmatched}
+        - Net profit: ₹${matchingResult.netProfit}`);
+    }
 
     // Store the trade matching results in database
     await prisma.$transaction(async (tx) => {
@@ -209,7 +213,9 @@ ${matchingResult.matchedTrades.slice(0, 10).map(t =>
         aiInsights = await analyzeCsvData(analysisData, "Analyze this trading performance focusing on matched trades and provide insights");
       }
     } catch (error) {
-      console.log('AI analysis failed, continuing without insights:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('AI analysis failed, continuing without insights:', error);
+      }
     }
 
     return NextResponse.json({

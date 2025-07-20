@@ -9,6 +9,7 @@ import {
   CheckCircle,
   X,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,11 +31,18 @@ interface UploadState {
   aiInsights?: string;
 }
 
+interface BrokerOption {
+  value: string;
+  label: string;
+}
+
+type FileValidationError = string | null;
+
 const expectedColumns = [
   "Date",
   "Script/Symbol",
   "Type (Buy/Sell)",
-  "Quantity",
+  "Quantity", 
   "Price",
   "Exchange",
   "Product Type",
@@ -42,9 +50,9 @@ const expectedColumns = [
   "Trade Number/ID",
   "Trade Time",
   "Optional: ISIN, ETT, GST, STT, SEBI, Stamp Duty",
-];
+] as const;
 
-const brokerOptions = [
+const brokerOptions: BrokerOption[] = [
   { value: "zerodha", label: "Zerodha" },
   { value: "angelone", label: "Angel One" },
   { value: "upstox", label: "Upstox" },
@@ -70,7 +78,7 @@ export default function CSVUploadForm() {
   const [selectedBroker, setSelectedBroker] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
 
-  const validateFile = useCallback((file: File): string | null => {
+  const validateFile = useCallback((file: File): FileValidationError => {
     // Check file type
     if (!file.name.endsWith(".csv")) {
       return "Please upload a CSV file";
@@ -131,7 +139,9 @@ export default function CSVUploadForm() {
   );
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile) {
+      return;
+    }
 
     setUploadState({
       isUploading: true,

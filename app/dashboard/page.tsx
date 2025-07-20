@@ -36,12 +36,19 @@ export default async function Dashboard() {
         },
         include: { analytics: true },
       });
-      console.log("Created new user in database:", userRecord.id);
+      // Log successful user creation for debugging in development only
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Created new user in database:", userRecord.id);
+      }
     }
 
     analytics = userRecord?.analytics;
   } catch (error) {
-    console.error("Error fetching/creating user:", error);
+    // Log error in development, use proper logging in production
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Error fetching/creating user:", error);
+    }
+    // You should implement proper logging here for production
   }
 
   // Use zero values if no analytics available

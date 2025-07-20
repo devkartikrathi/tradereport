@@ -25,34 +25,26 @@ const isPublicRoute = createRouteMatcher([
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth()
-  const url = req.nextUrl
-  
-  // If user is not signed in and trying to access protected route
-  if (isProtectedRoute(req) && !userId) {
-    return Response.redirect(new URL('/sign-in', req.url))
-  }
-  
-  // If user is signed in and on landing page, redirect to dashboard
-  if (userId && url.pathname === '/') {
-    return Response.redirect(new URL('/dashboard', req.url))
-  }
-  
-  // If user is signed in and trying to access auth pages, redirect to dashboard
-  if (userId && (url.pathname.startsWith('/sign-in') || url.pathname.startsWith('/sign-up'))) {
-    return Response.redirect(new URL('/dashboard', req.url))
-  }
-  
   // Allow access to public routes
-  if (isPublicRoute(req)) {
-    return
-  }
+  const publicRoutes = ['/'];
   
-  // Protect all other routes
-  if (isProtectedRoute(req)) {
-    await auth.protect()
+  if (publicRoutes.includes(req.nextUrl.pathname)) {
+    return;
   }
-})
+
+  // Handle API routes
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    const { userId } = await auth();
+    if (!userId) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return;
+  }
+
+  // Protect all other routes
+  await auth.protect();
+  return;
+});
 
 export const config = {
   matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],

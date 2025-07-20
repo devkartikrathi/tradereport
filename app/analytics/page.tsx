@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+
+import {
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  BarChart3,
+  RefreshCw,
+} from "lucide-react";
+
 import Sidebar from "@/components/navigation/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,16 +25,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EquityCurveChart from "@/components/charts/equity-curve-chart";
 import DailyPnLChart from "@/components/charts/daily-pnl-chart";
 import WinLossChart from "@/components/charts/win-loss-chart";
-import {
-  Activity,
-  TrendingUp,
-  TrendingDown,
-  Target,
-  Calendar,
-  Clock,
-  BarChart3,
-  RefreshCw,
-} from "lucide-react";
+import HistogramChart from "@/components/charts/histogram-chart";
+import PerformanceChart from "@/components/charts/performance-chart";
 
 interface AnalyticsData {
   analytics: {
@@ -115,7 +117,10 @@ export default function AnalyticsPage() {
     fetchAnalytics(period);
   }, [period]);
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number): string => {
+    if (typeof value !== 'number' || isNaN(value)) {
+      return '₹0';
+    }
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
@@ -124,9 +129,14 @@ export default function AnalyticsPage() {
     }).format(value);
   };
 
-  const formatPercentage = (value: number) => {
+  const formatPercentage = (value: number): string => {
+    if (typeof value !== 'number' || isNaN(value)) {
+      return '0.0%';
+    }
     return `${value.toFixed(1)}%`;
   };
+
+
 
   if (loading) {
     return (
@@ -165,10 +175,34 @@ export default function AnalyticsPage() {
       <Sidebar>
         <div className="p-8">
           <div className="text-center">
-            <h1 className="text-2xl font-bold mb-4">No Data Available</h1>
-            <p className="text-muted-foreground">
-              Please upload your trade data to view analytics.
+            <BarChart3 className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+            <h1 className="text-2xl font-bold mb-4">No Trading Data Available</h1>
+            <p className="text-muted-foreground mb-6">
+              Upload your trade data to view comprehensive analytics and insights.
             </p>
+            <Button onClick={() => window.location.href = '/upload'}>
+              Upload Trades
+            </Button>
+          </div>
+        </div>
+      </Sidebar>
+    );
+  }
+
+  // Validate that we have the required data structure
+  if (!data.analytics || !data.chartData) {
+    return (
+      <Sidebar>
+        <div className="p-8">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4 text-red-600">Invalid Data Format</h1>
+            <p className="text-muted-foreground mb-4">
+              The analytics data appears to be corrupted. Please try refreshing or contact support.
+            </p>
+            <Button onClick={() => fetchAnalytics(period)}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
           </div>
         </div>
       </Sidebar>
@@ -294,7 +328,13 @@ export default function AnalyticsPage() {
               <EquityCurveChart data={data.chartData.equityCurve} />
               <WinLossChart data={data.chartData.winLossDistribution} />
             </div>
-            <DailyPnLChart data={data.chartData.dailyPnL} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <DailyPnLChart data={data.chartData.dailyPnL} />
+              <HistogramChart 
+                data={data.chartData.profitLossDistribution} 
+                title="Profit/Loss Distribution"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
@@ -410,79 +450,16 @@ export default function AnalyticsPage() {
 
           <TabsContent value="patterns" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    Hourly Performance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {data.chartData.hourlyPerformance.map((hour) => (
-                      <div
-                        key={hour.hour}
-                        className="flex items-center justify-between"
-                      >
-                        <span className="text-sm">{hour.hour}</span>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full ${
-                              hour.avgPnL >= 0 ? "bg-green-500" : "bg-red-500"
-                            }`}
-                          />
-                          <span
-                            className={`text-sm font-medium ${
-                              hour.avgPnL >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {formatCurrency(hour.avgPnL)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    Weekly Performance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {data.chartData.weeklyPerformance.map((day) => (
-                      <div
-                        key={day.day}
-                        className="flex items-center justify-between"
-                      >
-                        <span className="text-sm">{day.day}</span>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full ${
-                              day.avgPnL >= 0 ? "bg-green-500" : "bg-red-500"
-                            }`}
-                          />
-                          <span
-                            className={`text-sm font-medium ${
-                              day.avgPnL >= 0
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {formatCurrency(day.avgPnL)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <PerformanceChart 
+                data={data.chartData.hourlyPerformance} 
+                type="hourly"
+                height={350}
+              />
+              <PerformanceChart 
+                data={data.chartData.weeklyPerformance} 
+                type="weekly"
+                height={350}
+              />
             </div>
           </TabsContent>
         </Tabs>

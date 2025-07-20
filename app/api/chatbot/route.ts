@@ -159,7 +159,9 @@ interface TradeForCSV {
 }
 
 function generateCSVFromTrades(trades: TradeForCSV[]): string {
-  if (!trades.length) return '';
+  if (!trades.length) {
+    return '';
+  }
   
   const headers = ['TradeID', 'Date', 'Time', 'Symbol', 'TradeType', 'EntryPrice', 'ExitPrice', 'Quantity', 'Commission', 'ProfitLoss', 'Duration'];
   const csvRows = [headers.join(',')];
