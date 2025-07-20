@@ -73,19 +73,21 @@ export async function GET(request: NextRequest) {
     const chartData = generateChartData(filteredTrades);
 
     return NextResponse.json({
-      analytics: user.analytics || analytics,
+      analytics: analytics, // Always use calculated analytics for real-time data
       chartData,
       summary: {
         totalTrades: filteredTrades.length,
         dateRange: {
-          start: filteredTrades.length > 0 ? filteredTrades[0].date : null,
-          end: filteredTrades.length > 0 ? filteredTrades[filteredTrades.length - 1].date : null
+          start: filteredTrades.length > 0 ? format(filteredTrades[0].date, 'yyyy-MM-dd') : null,
+          end: filteredTrades.length > 0 ? format(filteredTrades[filteredTrades.length - 1].date, 'yyyy-MM-dd') : null
         }
       }
     });
 
   } catch (error) {
-    console.error('Analytics error:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Analytics error:', error);
+    }
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -206,7 +208,10 @@ function generateChartData(trades: Trade[]) {
     return {
       equityCurve: [],
       dailyPnL: [],
-      winLossDistribution: [],
+      winLossDistribution: [
+        { name: 'Winning Trades', value: 0, color: '#22c55e' },
+        { name: 'Losing Trades', value: 0, color: '#ef4444' }
+      ],
       profitLossDistribution: [],
       hourlyPerformance: [],
       weeklyPerformance: [],
@@ -233,19 +238,28 @@ function generateChartData(trades: Trade[]) {
     dailyPnLMap.set(dateKey, (dailyPnLMap.get(dateKey) || 0) + trade.profitLoss);
   }
   
-  const dailyPnL = Array.from(dailyPnLMap.entries()).map(([date, pnl]) => ({
-    date,
-    pnl,
-    color: pnl >= 0 ? 'green' : 'red'
-  }));
+  const dailyPnL = Array.from(dailyPnLMap.entries())
+    .map(([date, pnl]) => ({
+      date,
+      pnl,
+      color: pnl >= 0 ? '#22c55e' : '#ef4444'
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date)); // Sort by date
 
   // Win/Loss Distribution
   const winningTrades = trades.filter(t => t.profitLoss > 0).length;
   const losingTrades = trades.filter(t => t.profitLoss < 0).length;
+  const breakEvenTrades = trades.filter(t => t.profitLoss === 0).length;
+  
   const winLossDistribution = [
     { name: 'Winning Trades', value: winningTrades, color: '#22c55e' },
     { name: 'Losing Trades', value: losingTrades, color: '#ef4444' }
   ];
+  
+  // Add break-even trades if they exist
+  if (breakEvenTrades > 0) {
+    winLossDistribution.push({ name: 'Break-even Trades', value: breakEvenTrades, color: '#6b7280' });
+  }
 
   // Profit/Loss Distribution (histogram)
   const profitLossDistribution = createHistogram(trades.map(t => t.profitLoss));
@@ -253,17 +267,25 @@ function generateChartData(trades: Trade[]) {
   // Hourly Performance
   const hourlyMap = new Map<number, { pnl: number, count: number }>();
   for (const trade of trades) {
-    const hour = getHours(new Date(`${trade.date}T${trade.time}`));
-    const current = hourlyMap.get(hour) || { pnl: 0, count: 0 };
-    hourlyMap.set(hour, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
+    try {
+      const tradeDateTime = new Date(`${format(new Date(trade.date), 'yyyy-MM-dd')}T${trade.time || '09:15:00'}`);
+      const hour = getHours(tradeDateTime);
+      const current = hourlyMap.get(hour) || { pnl: 0, count: 0 };
+      hourlyMap.set(hour, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
+    } catch {
+      // Skip trades with invalid time format
+      continue;
+    }
   }
   
-  const hourlyPerformance = Array.from(hourlyMap.entries()).map(([hour, data]) => ({
-    hour: `${hour}:00`,
-    avgPnL: data.pnl / data.count,
-    totalPnL: data.pnl,
-    trades: data.count
-  }));
+  const hourlyPerformance = Array.from(hourlyMap.entries())
+    .map(([hour, data]) => ({
+      hour: `${hour.toString().padStart(2, '0')}:00`,
+      avgPnL: data.count > 0 ? data.pnl / data.count : 0,
+      totalPnL: data.pnl,
+      trades: data.count
+    }))
+    .sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
 
   // Weekly Performance
   const weeklyMap = new Map<number, { pnl: number, count: number }>();
@@ -274,12 +296,15 @@ function generateChartData(trades: Trade[]) {
     weeklyMap.set(day, { pnl: current.pnl + trade.profitLoss, count: current.count + 1 });
   }
   
-  const weeklyPerformance = Array.from(weeklyMap.entries()).map(([day, data]) => ({
-    day: dayNames[day],
-    avgPnL: data.pnl / data.count,
-    totalPnL: data.pnl,
-    trades: data.count
-  }));
+  const weeklyPerformance = dayNames.map((dayName, index) => {
+    const data = weeklyMap.get(index) || { pnl: 0, count: 0 };
+    return {
+      day: dayName,
+      avgPnL: data.count > 0 ? data.pnl / data.count : 0,
+      totalPnL: data.pnl,
+      trades: data.count
+    };
+  });
 
   // Symbol Performance
   const symbolMap = new Map<string, { pnl: number, count: number }>();
@@ -293,10 +318,10 @@ function generateChartData(trades: Trade[]) {
       symbol,
       totalPnL: data.pnl,
       trades: data.count,
-      avgPnL: data.pnl / data.count
+      avgPnL: data.count > 0 ? data.pnl / data.count : 0
     }))
     .sort((a, b) => b.totalPnL - a.totalPnL)
-    .slice(0, 10); // Top 10 symbols
+    .slice(0, 15); // Top 15 symbols for better visibility
 
   return {
     equityCurve,
@@ -316,6 +341,17 @@ function createHistogram(values: number[], bins = 10) {
   
   const min = Math.min(...values);
   const max = Math.max(...values);
+  
+  // Handle case where all values are the same
+  if (min === max) {
+    return [{
+      range: `${min.toFixed(2)}`,
+      count: values.length,
+      minValue: min,
+      maxValue: max
+    }];
+  }
+  
   const range = max - min;
   const binSize = range / bins;
   
@@ -325,11 +361,17 @@ function createHistogram(values: number[], bins = 10) {
     minValue: min + i * binSize,
     maxValue: min + (i + 1) * binSize
   }));
-  
+
   for (const value of values) {
-    const binIndex = Math.min(Math.floor((value - min) / binSize), bins - 1);
-    histogram[binIndex].count++;
+    let binIndex = Math.floor((value - min) / binSize);
+    // Handle edge case where value equals max
+    if (binIndex >= bins) {
+      binIndex = bins - 1;
+    }
+    if (binIndex >= 0 && binIndex < histogram.length) {
+      histogram[binIndex].count++;
+    }
   }
-  
-  return histogram;
+
+  return histogram.filter(bin => bin.count > 0); // Only return bins with data
 } 
