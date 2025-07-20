@@ -35,6 +35,26 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect();
   }
 
+=======
+  // Allow access to public routes
+  const publicRoutes = ['/'];
+  
+  if (publicRoutes.includes(req.nextUrl.pathname)) {
+    return;
+  }
+
+  // Handle API routes
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    const { userId } = await auth();
+    if (!userId) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return;
+  }
+
+  // Protect all other routes
+  await auth.protect();
+
   return;
 });
 
