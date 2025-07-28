@@ -15,6 +15,7 @@ import {
   Settings,
   FileText,
   TrendingDown,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,12 @@ const navigation = [
     href: "/chat",
     icon: MessageCircle,
     description: "AI-powered trading insights",
+  },
+  {
+    name: "Trading Rules",
+    href: "/trading-rules",
+    icon: Shield,
+    description: "Set your personal trading rules",
   },
   {
     name: "Settings",

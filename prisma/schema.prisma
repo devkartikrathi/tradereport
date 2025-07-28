@@ -20,6 +20,7 @@ model User {
   openPositions     OpenPosition[]
   trades            Trade[]
   brokerConnections BrokerConnection[]
+  tradingRules      TradingRuleSet?
 }
 
 model Trade {
@@ -143,4 +144,17 @@ model BrokerConnection {
   @@unique([userId, broker])
   @@index([userId])
   @@index([broker])
+}
+
+model TradingRuleSet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  maxDailyTrades  Int      @default(10)
+  maxDailyLoss    Float    @default(1000.0)
+  riskRewardRatio Float    @default(2.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
