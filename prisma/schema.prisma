@@ -21,6 +21,7 @@ model User {
   trades            Trade[]
   brokerConnections BrokerConnection[]
   tradingRules      TradingRuleSet?
+  chatMessages      ChatMessage[]
 }
 
 model Trade {
@@ -157,4 +158,18 @@ model TradingRuleSet {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String // "user" or "assistant"
+  content   String
+  timestamp DateTime @default(now())
+  sessionId String? // For conversation grouping
+  metadata  Json? // For additional context
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@index([sessionId])
 }
