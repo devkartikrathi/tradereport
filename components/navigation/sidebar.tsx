@@ -12,13 +12,13 @@ import {
   Menu,
   X,
   Activity,
-  Settings,
-  FileText,
   TrendingDown,
   Shield,
   User,
   Brain,
   Target,
+  Zap,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -49,12 +49,6 @@ const navigation = [
     description: "View all trades and open positions",
   },
   {
-    name: "Reports",
-    href: "/reports",
-    icon: FileText,
-    description: "Generate detailed reports",
-  },
-  {
     name: "Chat Assistant",
     href: "/chat",
     icon: MessageCircle,
@@ -73,6 +67,24 @@ const navigation = [
     description: "Get personalized trading insights",
   },
   {
+    name: "Behavioral Insights",
+    href: "/behavioral",
+    icon: Eye,
+    description: "Understand your trading patterns",
+  },
+  {
+    name: "Risk Management",
+    href: "/risk-management",
+    icon: Shield,
+    description: "Manage your trading risk",
+  },
+  {
+    name: "Performance Goals",
+    href: "/performance-goals",
+    icon: Target,
+    description: "Set and track your goals",
+  },
+  {
     name: "Profile",
     href: "/profile",
     icon: User,
@@ -85,10 +97,10 @@ const navigation = [
     description: "Set your personal trading rules",
   },
   {
-    name: "Settings",
-    href: "/settings",
-    icon: Settings,
-    description: "Account and preferences",
+    name: "Live Monitoring",
+    href: "/monitoring",
+    icon: Zap,
+    description: "Real-time trading activity and alerts",
   },
 ];
 

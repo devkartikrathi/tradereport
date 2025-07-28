@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,8 +20,10 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" className="dark">
         <body className={`${inter.className} antialiased`}>
-          <div className="min-h-screen bg-background">{children}</div>
-          <Toaster />
+          <ErrorBoundary>
+            <div className="min-h-screen bg-background">{children}</div>
+            <Toaster />
+          </ErrorBoundary>
         </body>
       </html>
     </ClerkProvider>

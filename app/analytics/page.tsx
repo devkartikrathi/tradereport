@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageLoading } from "@/components/ui/loading";
+import { apiClient } from "@/lib/api-client";
 import EquityCurveChart from "@/components/charts/equity-curve-chart";
 import DailyPnLChart from "@/components/charts/daily-pnl-chart";
 import WinLossChart from "@/components/charts/win-loss-chart";
@@ -98,15 +100,16 @@ export default function AnalyticsPage() {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/analytics?period=${selectedPeriod}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch analytics");
+      const result = await apiClient.getAnalytics(selectedPeriod);
+      
+      if (!result.success || result.error) {
+        throw new Error(result.error || "Failed to fetch analytics");
       }
 
-      const result = await response.json();
-      setData(result);
+      setData(result.data as AnalyticsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
+      apiClient.handleError({ error: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setLoading(false);
     }
@@ -132,12 +135,10 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <Sidebar>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading analytics...</p>
-          </div>
-        </div>
+        <PageLoading 
+          title="Loading Analytics"
+          description="Please wait while we prepare your trading analytics"
+        />
       </Sidebar>
     );
   }
