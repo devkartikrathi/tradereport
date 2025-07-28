@@ -157,3 +157,8 @@ vite.config.ts.timestamp-*
 
 # Clerk configuration (can include secrets)
 /.clerk/
+
+docs/
+
+.cursor/
+.bmad-core/

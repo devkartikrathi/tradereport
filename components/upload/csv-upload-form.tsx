@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Upload,
   FileSpreadsheet,
   AlertTriangle,
   CheckCircle,
   X,
+  Link,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +33,13 @@ interface UploadState {
   aiInsights?: string;
 }
 
+interface ZerodhaState {
+  isConnected: boolean;
+  isFetching: boolean;
+  lastSync?: string;
+  connectionError?: string;
+}
+
 const expectedColumns = [
   "Date",
   "Script/Symbol",
@@ -46,15 +56,43 @@ const expectedColumns = [
 
 export default function UniversalUploadForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [uploadState, setUploadState] = useState<UploadState>({
     isUploading: false,
     progress: 0,
     error: null,
     success: false,
   });
+  const [zerodhaState, setZerodhaState] = useState<ZerodhaState>({
+    isConnected: false,
+    isFetching: false,
+  });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [dragActive, setDragActive] = useState(false);
+
+  // Check for Zerodha connection success
+  useEffect(() => {
+    const success = searchParams.get("success");
+    if (success === "zerodha_connected") {
+      setZerodhaState((prev) => ({ ...prev, isConnected: true }));
+    }
+  }, [searchParams]);
+
+  // Check Zerodha connection status
+  useEffect(() => {
+    const checkZerodhaConnection = async () => {
+      try {
+        const response = await fetch("/api/zerodha/fetch-trades");
+        if (response.ok) {
+          setZerodhaState((prev) => ({ ...prev, isConnected: true }));
+        }
+      } catch {
+        // Connection not available
+      }
+    };
+    checkZerodhaConnection();
+  }, []);
 
   const validateFile = useCallback((file: File): string | null => {
     // Check file type
@@ -176,6 +214,39 @@ export default function UniversalUploadForm() {
     });
   };
 
+  const connectZerodha = () => {
+    window.location.href = "/api/auth/zerodha";
+  };
+
+  const fetchZerodhaData = async () => {
+    setZerodhaState((prev) => ({ ...prev, isFetching: true }));
+    try {
+      const response = await fetch("/api/zerodha/fetch-trades");
+      if (response.ok) {
+        await response.json();
+        setZerodhaState((prev) => ({
+          ...prev,
+          isFetching: false,
+          lastSync: new Date().toISOString(),
+        }));
+        // Handle the fetched data - could redirect to dashboard or show summary
+        router.push("/dashboard");
+      } else {
+        setZerodhaState((prev) => ({
+          ...prev,
+          isFetching: false,
+          connectionError: "Failed to fetch data",
+        }));
+      }
+    } catch {
+      setZerodhaState((prev) => ({
+        ...prev,
+        isFetching: false,
+        connectionError: "Network error",
+      }));
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
@@ -196,6 +267,77 @@ export default function UniversalUploadForm() {
           </a>
         </div>
       </div>
+
+      {/* Zerodha Integration Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Connect Zerodha Account
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {zerodhaState.isConnected ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                <span className="font-medium">Connected to Zerodha</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={fetchZerodhaData}
+                  disabled={zerodhaState.isFetching}
+                  size="sm"
+                >
+                  {zerodhaState.isFetching ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Fetch Latest Data
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push("/broker-connection")}
+                >
+                  Manage Connection
+                </Button>
+              </div>
+              {zerodhaState.lastSync && (
+                <p className="text-sm text-muted-foreground">
+                  Last synced:{" "}
+                  {new Date(zerodhaState.lastSync).toLocaleString()}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Connect your Zerodha account to automatically import your
+                trading data
+              </p>
+              <Button onClick={connectZerodha} size="sm">
+                <Link className="h-4 w-4 mr-2" />
+                Connect Zerodha
+              </Button>
+            </div>
+          )}
+          {zerodhaState.connectionError && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                {zerodhaState.connectionError}
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Expected Format Card */}
       <Card>

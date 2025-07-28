@@ -8,17 +8,18 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  clerkId       String         @unique
-  email         String         @unique
-  firstName     String?
-  lastName      String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  analytics     Analytics?
-  matchedTrades MatchedTrade[]
-  openPositions OpenPosition[]
-  trades        Trade[]
+  id                String             @id @default(cuid())
+  clerkId           String             @unique
+  email             String             @unique
+  firstName         String?
+  lastName          String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  analytics         Analytics?
+  matchedTrades     MatchedTrade[]
+  openPositions     OpenPosition[]
+  trades            Trade[]
+  brokerConnections BrokerConnection[]
 }
 
 model Trade {
@@ -128,4 +129,18 @@ model OpenPosition {
   @@index([userId, symbol])
   @@index([userId, type])
   @@index([date])
+}
+
+model BrokerConnection {
+  id                   String   @id @default(cuid())
+  broker               String
+  encryptedAccessToken String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, broker])
+  @@index([userId])
+  @@index([broker])
 }
