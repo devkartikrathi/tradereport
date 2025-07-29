@@ -32,6 +32,17 @@ interface BrokerConnection {
   updatedAt: string;
 }
 
+interface ZerodhaProfile {
+  user_id: string;
+  user_name: string;
+  email: string;
+  broker: string;
+  user_type: string;
+  exchanges: string[];
+  products: string[];
+  order_types: string[];
+}
+
 interface ProfileFormData {
   firstName: string;
   lastName: string;
@@ -48,6 +59,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [tradingRules, setTradingRules] = useState<TradingRules | null>(null);
   const [brokerConnections, setBrokerConnections] = useState<BrokerConnection[]>([]);
+  const [zerodhaProfile, setZerodhaProfile] = useState<ZerodhaProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -104,6 +116,20 @@ export default function ProfilePage() {
       if (connectionsResponse.ok) {
         const connectionsData = await connectionsResponse.json();
         setBrokerConnections(connectionsData.connections || []);
+        
+        // Check if Zerodha is connected and fetch profile
+        const zerodhaConnection = connectionsData.connections?.find((conn: BrokerConnection) => conn.broker === "zerodha");
+        if (zerodhaConnection) {
+          try {
+            const zerodhaResponse = await fetch('/api/zerodha/profile');
+            if (zerodhaResponse.ok) {
+              const zerodhaData = await zerodhaResponse.json();
+              setZerodhaProfile(zerodhaData);
+            }
+          } catch (error) {
+            console.error('Error fetching Zerodha profile:', error);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching profile data:', error);
@@ -475,32 +501,74 @@ export default function ProfilePage() {
               ) : (
                 <div className="space-y-4">
                   {brokerConnections.map((connection) => (
-                    <div key={connection.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-lg">
-                          <Link className="h-4 w-4 text-primary" />
+                    <div key={connection.id} className="p-4 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-primary/10 rounded-lg">
+                            <Link className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium capitalize">{connection.broker}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Connected on {formatDate(connection.createdAt)}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-medium capitalize">{connection.broker}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Connected on {formatDate(connection.createdAt)}
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="capitalize">
+                            {connection.broker}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleBrokerDisconnect(connection.id)}
+                            className="flex items-center gap-2"
+                          >
+                            <Unlink className="h-4 w-4" />
+                            Disconnect
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="capitalize">
-                          {connection.broker}
-                        </Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleBrokerDisconnect(connection.id)}
-                          className="flex items-center gap-2"
-                        >
-                          <Unlink className="h-4 w-4" />
-                          Disconnect
-                        </Button>
-                      </div>
+                      
+                      {/* Show Zerodha user details if connected */}
+                      {connection.broker === "zerodha" && zerodhaProfile && (
+                        <div className="bg-blue-50 p-3 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm font-medium text-blue-900">Zerodha Account Details</span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">User ID:</span>
+                              <span className="ml-2 font-medium">{zerodhaProfile.user_id}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Name:</span>
+                              <span className="ml-2 font-medium">{zerodhaProfile.user_name}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Email:</span>
+                              <span className="ml-2 font-medium">{zerodhaProfile.email}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Account Type:</span>
+                              <span className="ml-2 font-medium capitalize">{zerodhaProfile.user_type}</span>
+                            </div>
+                          </div>
+                          {zerodhaProfile.exchanges && zerodhaProfile.exchanges.length > 0 && (
+                            <div className="pt-2 border-t border-blue-200">
+                              <span className="text-xs text-muted-foreground">Available Exchanges:</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {zerodhaProfile.exchanges.map((exchange, index) => (
+                                  <Badge key={index} variant="outline" className="text-xs">
+                                    {exchange}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                   <Button asChild variant="outline">

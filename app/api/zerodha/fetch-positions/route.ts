@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
 export async function GET() {
   try {
     const { userId } = await auth();
-    
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -75,7 +75,7 @@ export async function GET() {
     });
 
     return NextResponse.json(
-      { 
+      {
         error: "Failed to fetch positions from Zerodha",
         details: error instanceof Error ? error.message : "Unknown error"
       },

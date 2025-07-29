@@ -1,207 +1,370 @@
 import { KiteConnect } from "kiteconnect";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { decryptToken } from "./encryption-service";
 
-export interface Trade {
-  trade_id: string;
-  order_id: string;
-  exchange_order_id: string | null;
-  tradingsymbol: string;
-  exchange: string;
-  instrument_token: number;
-  transaction_type: string;
-  product: string;
-  average_price: number;
-  filled: number;
-  quantity: number;
-  fill_timestamp: Date;
-  order_timestamp: Date;
-  exchange_timestamp: Date;
+export interface ZerodhaCredentials {
+  apiKey: string;
+  apiSecret: string;
 }
 
-export interface Position {
-  tradingsymbol: string;
-  exchange: string;
-  instrument_token: number;
-  product: string;
-  quantity: number;
-  overnight_quantity: number;
-  multiplier: number;
-  average_price: number;
-  close_price: number;
-  last_price: number;
-  value: number;
-  pnl: number;
-  m2m: number;
-  unrealised: number;
-  realised: number;
-  buy_quantity: number;
-  buy_price: number;
-  buy_value: number;
-  buy_m2m: number;
-  day_buy_quantity: number;
-  day_buy_price: number;
-  day_buy_value: number;
-  sell_quantity: number;
-  sell_price: number;
-  sell_value: number;
-  sell_m2m: number;
-  day_sell_quantity: number;
-  day_sell_price: number;
-  day_sell_value: number;
+export interface ZerodhaSession {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  loginTime: string;
+  userType: string;
+  userName: string;
+  email: string;
+  broker: string;
+  exchanges: string[];
+  products: string[];
+  orderTypes: string[];
+  profile: Record<string, unknown>;
 }
 
 export class ZerodhaService {
-  private kite: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   private apiKey: string;
   private apiSecret: string;
+  private kite: KiteConnect;
 
-  constructor() {
-    this.apiKey = process.env.ZERODHA_API_KEY || '';
-    this.apiSecret = process.env.ZERODHA_API_SECRET || '';
-    
+  constructor(credentials?: ZerodhaCredentials) {
+    this.apiKey = credentials?.apiKey || process.env.ZERODHA_API_KEY || '';
+    this.apiSecret = credentials?.apiSecret || process.env.ZERODHA_API_SECRET || '';
+
     if (!this.apiKey || !this.apiSecret) {
       throw new Error('Zerodha API credentials not configured');
     }
 
-    this.kite = new KiteConnect({
-      api_key: this.apiKey,
-    });
+    this.kite = new KiteConnect({ api_key: this.apiKey });
   }
 
-  async getAccessToken(requestToken: string): Promise<string> {
+  /**
+   * Generate login URL for Zerodha authentication
+   */
+  generateLoginUrl(): string {
+    return this.kite.getLoginURL();
+  }
+
+  /**
+   * Generate session from request token
+   */
+  async generateSession(requestToken: string): Promise<ZerodhaSession> {
     try {
+      logger.info("Generating Zerodha session", { requestToken: requestToken.substring(0, 10) + "..." });
+
       const sessionData = await this.kite.generateSession(requestToken, this.apiSecret);
-      return sessionData.access_token;
-    } catch (error) {
-      console.error('Error getting access token:', error);
-      throw new Error('Failed to get access token');
-    }
-  }
 
-  // Check if token is still valid
-  async isTokenValid(accessToken: string): Promise<boolean> {
-    try {
-      this.kite.setAccessToken(accessToken);
-      await this.kite.getProfile();
-      return true;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('Invalid session') || errorMessage.includes('Token expired')) {
-        return false;
-      }
-      throw error;
-    }
-  }
+      // Set the access token for subsequent API calls
+      this.kite.setAccessToken(sessionData.access_token);
 
-  // Get last trading day's date (considering market holidays)
-  getLastTradingDate(): Date {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    
-    // If today is Sunday (0) or Saturday (6), go back to Friday
-    if (dayOfWeek === 0) {
-      today.setDate(today.getDate() - 2);
-    } else if (dayOfWeek === 6) {
-      today.setDate(today.getDate() - 1);
-    }
-    
-    // Set time to end of trading day (3:30 PM IST)
-    today.setHours(15, 30, 0, 0);
-    return today;
-  }
+      // Get user profile
+      const profile = await this.kite.getProfile();
 
-  async getTrades(accessToken: string, fromDate?: Date, toDate?: Date): Promise<Trade[]> {
-    try {
-      this.kite.setAccessToken(accessToken);
-      
-      // If no dates provided, get last trading day's trades
-      if (!fromDate) {
-        fromDate = this.getLastTradingDate();
-        fromDate.setDate(fromDate.getDate() - 1); // Previous day
-        fromDate.setHours(9, 15, 0, 0); // Market open
-      }
-      
-      if (!toDate) {
-        toDate = this.getLastTradingDate();
-      }
+      const session: ZerodhaSession = {
+        accessToken: sessionData.access_token,
+        refreshToken: sessionData.refresh_token,
+        userId: sessionData.user_id,
+        loginTime: sessionData.login_time,
+        userType: sessionData.user_type,
+        userName: sessionData.user_name,
+        email: profile.email,
+        broker: profile.broker,
+        exchanges: sessionData.exchanges || [],
+        products: sessionData.products || [],
+        orderTypes: sessionData.order_types || [],
+        profile: profile
+      };
 
-      const trades = await this.kite.getTrades();
-      
-      // Filter trades by date range
-      const filteredTrades = trades.filter((trade: unknown) => {
-        const tradeObj = trade as { fill_timestamp: string };
-        const tradeDate = new Date(tradeObj.fill_timestamp);
-        return tradeDate >= fromDate! && tradeDate <= toDate!;
+      logger.info("Zerodha session generated successfully", {
+        userId: session.userId,
+        userName: session.userName,
+        email: session.email
       });
 
-      return filteredTrades;
+      return session;
     } catch (error) {
-      console.error('Error fetching trades:', error);
-      throw new Error('Failed to fetch trades');
+      logger.error("Error generating Zerodha session", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        requestToken: requestToken.substring(0, 10) + "..."
+      });
+      throw new Error(`Failed to generate Zerodha session: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  async getCurrentPositions(accessToken: string): Promise<Position[]> {
+  /**
+   * Get user profile from Zerodha
+   */
+  async getProfile(): Promise<Record<string, unknown>> {
     try {
-      this.kite.setAccessToken(accessToken);
+      const profile = await this.kite.getProfile();
+      logger.info("Zerodha profile retrieved", { userId: profile.user_id });
+      return profile;
+    } catch (error) {
+      logger.error("Error getting Zerodha profile", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha profile: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  /**
+   * Get user margins
+   */
+  async getMargins(): Promise<Record<string, unknown>> {
+    try {
+      const margins = await this.kite.getMargins();
+      logger.info("Zerodha margins retrieved");
+      return margins;
+    } catch (error) {
+      logger.error("Error getting Zerodha margins", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha margins: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  /**
+   * Get portfolio positions
+   */
+  async getPositions(): Promise<Record<string, unknown>> {
+    try {
       const positions = await this.kite.getPositions();
-      
-      // Return net positions (current holdings)
-      return positions.net || [];
+      logger.info("Zerodha positions retrieved", {
+        netPositions: positions.net?.length || 0,
+        dayPositions: positions.day?.length || 0
+      });
+      return positions;
     } catch (error) {
-      console.error('Error fetching positions:', error);
-      throw new Error('Failed to fetch positions');
+      logger.error("Error getting Zerodha positions", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha positions: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  async getProfile(accessToken: string) {
+  /**
+   * Get portfolio holdings
+   */
+  async getHoldings(): Promise<Record<string, unknown>[]> {
     try {
-      this.kite.setAccessToken(accessToken);
-      return await this.kite.getProfile();
+      const holdings = await this.kite.getHoldings();
+      logger.info("Zerodha holdings retrieved", {
+        holdingsCount: holdings.length
+      });
+      return holdings;
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      throw new Error('Failed to fetch profile');
+      logger.error("Error getting Zerodha holdings", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha holdings: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  async getHoldings(accessToken: string) {
+  /**
+   * Get orders
+   */
+  async getOrders(): Promise<Record<string, unknown>[]> {
     try {
-      this.kite.setAccessToken(accessToken);
-      return await this.kite.getHoldings();
+      const orders = await this.kite.getOrders();
+      logger.info("Zerodha orders retrieved", {
+        ordersCount: orders.length
+      });
+      return orders;
     } catch (error) {
-      console.error('Error fetching holdings:', error);
-      throw new Error('Failed to fetch holdings');
+      logger.error("Error getting Zerodha orders", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha orders: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  async getMargins(accessToken: string) {
+  /**
+   * Get trades
+   */
+  async getTrades(): Promise<Record<string, unknown>[]> {
     try {
-      this.kite.setAccessToken(accessToken);
-      return await this.kite.getMargins();
+      const trades = await this.kite.getTrades();
+      logger.info("Zerodha trades retrieved", {
+        tradesCount: trades.length
+      });
+      return trades;
     } catch (error) {
-      console.error('Error fetching margins:', error);
-      throw new Error('Failed to fetch margins');
+      logger.error("Error getting Zerodha trades", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      throw new Error(`Failed to get Zerodha trades: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  // Get orders for a specific date range
-  async getOrders(accessToken: string) {
+  /**
+   * Save Zerodha connection to database
+   */
+  async saveConnection(userId: string, session: ZerodhaSession): Promise<void> {
     try {
-      this.kite.setAccessToken(accessToken);
-      return await this.kite.getOrders();
+      // Save or update broker connection
+      await prisma.brokerConnection.upsert({
+        where: {
+          userId_broker: {
+            userId,
+            broker: "zerodha"
+          }
+        },
+        update: {
+          encryptedAccessToken: session.accessToken,
+          updatedAt: new Date()
+        },
+        create: {
+          userId,
+          broker: "zerodha",
+          encryptedAccessToken: session.accessToken,
+        }
+      });
+
+      logger.info("Zerodha connection saved to database", { userId });
     } catch (error) {
-      console.error('Error fetching orders:', error);
-      throw new Error('Failed to fetch orders');
+      logger.error("Error saving Zerodha connection", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        userId
+      });
+      throw new Error(`Failed to save Zerodha connection: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-  // Get historical data for a specific instrument
-  async getHistoricalData(accessToken: string, instrumentToken: number, fromDate: Date, toDate: Date, interval: string = 'day') {
+  /**
+   * Get Zerodha connection from database
+   */
+  async getConnection(userId: string): Promise<ZerodhaSession | null> {
     try {
-      this.kite.setAccessToken(accessToken);
-      return await this.kite.getHistoricalData(instrumentToken, fromDate, toDate, interval);
+      const connection = await prisma.brokerConnection.findUnique({
+        where: {
+          userId_broker: {
+            userId,
+            broker: "zerodha"
+          }
+        }
+      });
+
+      if (!connection) {
+        return null;
+      }
+
+      // Create new KiteConnect instance with stored token
+      const kite = new KiteConnect({ api_key: this.apiKey });
+
+      // Decrypt the access token before using it
+      const decryptedToken = await decryptToken(connection.encryptedAccessToken);
+      kite.setAccessToken(decryptedToken);
+
+      // Get current profile to verify token is still valid
+      const profile = await kite.getProfile();
+
+      return {
+        accessToken: decryptedToken,
+        refreshToken: "", // Not stored for security
+        userId: profile.user_id,
+        loginTime: new Date().toISOString(),
+        userType: profile.user_type,
+        userName: profile.user_name,
+        email: profile.email,
+        broker: profile.broker,
+        exchanges: [],
+        products: [],
+        orderTypes: [],
+        profile: profile
+      };
     } catch (error) {
-      console.error('Error fetching historical data:', error);
-      throw new Error('Failed to fetch historical data');
+      logger.error("Error getting Zerodha connection", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        userId
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Remove Zerodha connection
+   */
+  async removeConnection(userId: string): Promise<void> {
+    try {
+      await prisma.brokerConnection.deleteMany({
+        where: {
+          userId,
+          broker: "zerodha"
+        }
+      });
+
+      logger.info("Zerodha connection removed", { userId });
+    } catch (error) {
+      logger.error("Error removing Zerodha connection", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        userId
+      });
+      throw new Error(`Failed to remove Zerodha connection: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  /**
+   * Import trades from Zerodha
+   */
+  async importTrades(userId: string): Promise<Record<string, unknown>[]> {
+    try {
+      const connection = await this.getConnection(userId);
+      if (!connection) {
+        throw new Error("No Zerodha connection found");
+      }
+
+      // Set access token
+      this.kite.setAccessToken(connection.accessToken);
+
+      // Get trades
+      const trades = await this.kite.getTrades();
+
+      // Transform trades to our format
+      const transformedTrades = trades.map((trade: Record<string, unknown>) => ({
+        tradeId: trade.order_id,
+        date: new Date(trade.trade_time as string),
+        time: new Date(trade.trade_time as string).toTimeString().split(' ')[0],
+        symbol: trade.tradingsymbol,
+        tradeType: (trade.transaction_type as string).toUpperCase(),
+        entryPrice: parseFloat(trade.average_price as string),
+        exitPrice: parseFloat(trade.average_price as string),
+        quantity: parseInt(trade.quantity as string),
+        commission: parseFloat((trade.charges as string) || "0"),
+        profitLoss: parseFloat((trade.pnl as string) || "0"),
+        duration: 0, // Calculate if needed
+        userId: userId
+      }));
+
+      logger.info("Zerodha trades imported", {
+        userId,
+        tradesCount: transformedTrades.length
+      });
+
+      return transformedTrades;
+    } catch (error) {
+      logger.error("Error importing Zerodha trades", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        userId
+      });
+      throw new Error(`Failed to import Zerodha trades: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  // Check if the access token is still valid
+  async isTokenValid(accessToken: string): Promise<boolean> {
+    try {
+      const kite = new KiteConnect({ api_key: this.apiKey });
+      kite.setAccessToken(accessToken);
+
+      // Try to get profile - if it succeeds, token is valid
+      await kite.getProfile();
+      return true;
+    } catch (error) {
+      logger.warn("Zerodha token validation failed", {
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      return false;
     }
   }
 } 

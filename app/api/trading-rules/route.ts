@@ -1,45 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-
-const prisma = new PrismaClient();
-
-interface TradingRulesRequest {
-    maxDailyTrades: number;
-    maxDailyLoss: number;
-    riskRewardRatio: number;
-}
-
-interface TradingRulesResponse {
-    maxDailyTrades: number;
-    maxDailyLoss: number;
-    riskRewardRatio: number;
-}
-
-function validateTradingRules(data: TradingRulesRequest): { isValid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    // Validate max daily trades
-    if (!Number.isInteger(data.maxDailyTrades) || data.maxDailyTrades < 1 || data.maxDailyTrades > 50) {
-        errors.push("Max daily trades must be an integer between 1 and 50");
-    }
-
-    // Validate max daily loss
-    if (typeof data.maxDailyLoss !== 'number' || data.maxDailyLoss < 100 || data.maxDailyLoss > 100000) {
-        errors.push("Max daily loss must be between ₹100 and ₹1,00,000");
-    }
-
-    // Validate risk-reward ratio
-    if (typeof data.riskRewardRatio !== 'number' || data.riskRewardRatio < 0.5 || data.riskRewardRatio > 10.0) {
-        errors.push("Risk-reward ratio must be between 0.5 and 10.0");
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors
-    };
-}
 
 export async function GET() {
     try {
@@ -51,35 +13,39 @@ export async function GET() {
         // Get user from database
         const user = await prisma.user.findUnique({
             where: { clerkId: userId },
-            include: { tradingRules: true }
+            include: { tradingRules: true },
         });
 
         if (!user) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        // Return existing rules or default values
+        // Return trading rules or default values
         if (user.tradingRules) {
-            const response: TradingRulesResponse = {
+            return NextResponse.json({
                 maxDailyTrades: user.tradingRules.maxDailyTrades,
                 maxDailyLoss: user.tradingRules.maxDailyLoss,
-                riskRewardRatio: user.tradingRules.riskRewardRatio
-            };
-            return NextResponse.json(response);
+                riskRewardRatio: user.tradingRules.riskRewardRatio,
+                createdAt: user.tradingRules.createdAt,
+                updatedAt: user.tradingRules.updatedAt,
+            });
         } else {
-            // Return default values if no rules exist
-            const defaultRules: TradingRulesResponse = {
+            // Return default values
+            return NextResponse.json({
                 maxDailyTrades: 10,
                 maxDailyLoss: 1000.0,
-                riskRewardRatio: 2.0
-            };
-            return NextResponse.json(defaultRules);
+                riskRewardRatio: 2.0,
+                createdAt: null,
+                updatedAt: null,
+            });
         }
 
     } catch (error) {
-        logger.error("Error fetching trading rules", {
+        logger.error("Trading rules API error", {
             error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
         });
+
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }
@@ -94,75 +60,83 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Get user from database
-        const user = await prisma.user.findUnique({
-            where: { clerkId: userId }
-        });
+        const { maxDailyTrades, maxDailyLoss, riskRewardRatio } = await request.json();
 
-        if (!user) {
-            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        // Validate input
+        const validationErrors: string[] = [];
+
+        if (typeof maxDailyTrades !== "number" || maxDailyTrades < 1 || maxDailyTrades > 50) {
+            validationErrors.push("maxDailyTrades must be a number between 1 and 50");
         }
 
-        // Parse request body
-        const body = await request.json();
-        const tradingRules: TradingRulesRequest = {
-            maxDailyTrades: body.maxDailyTrades,
-            maxDailyLoss: body.maxDailyLoss,
-            riskRewardRatio: body.riskRewardRatio
-        };
+        if (typeof maxDailyLoss !== "number" || maxDailyLoss < 100 || maxDailyLoss > 100000) {
+            validationErrors.push("maxDailyLoss must be between 100 and 100000");
+        }
 
-        // Validate trading rules
-        const validation = validateTradingRules(tradingRules);
-        if (!validation.isValid) {
+        if (typeof riskRewardRatio !== "number" || riskRewardRatio < 0.5 || riskRewardRatio > 10.0) {
+            validationErrors.push("riskRewardRatio must be between 0.5 and 10.0");
+        }
+
+        if (validationErrors.length > 0) {
             return NextResponse.json(
-                {
-                    error: "Invalid trading rules",
-                    details: validation.errors
-                },
+                { error: "Invalid trading rules data", details: validationErrors },
                 { status: 400 }
             );
         }
 
-        // Save or update trading rules
-        const savedRules = await prisma.tradingRuleSet.upsert({
+        // Get or create user
+        let user = await prisma.user.findUnique({
+            where: { clerkId: userId },
+        });
+
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    clerkId: userId,
+                    email: "",
+                },
+            });
+        }
+
+        // Upsert trading rules
+        const tradingRules = await prisma.tradingRuleSet.upsert({
             where: { userId: user.id },
             update: {
-                maxDailyTrades: tradingRules.maxDailyTrades,
-                maxDailyLoss: tradingRules.maxDailyLoss,
-                riskRewardRatio: tradingRules.riskRewardRatio,
-                updatedAt: new Date()
+                maxDailyTrades,
+                maxDailyLoss,
+                riskRewardRatio,
             },
             create: {
                 userId: user.id,
-                maxDailyTrades: tradingRules.maxDailyTrades,
-                maxDailyLoss: tradingRules.maxDailyLoss,
-                riskRewardRatio: tradingRules.riskRewardRatio
-            }
+                maxDailyTrades,
+                maxDailyLoss,
+                riskRewardRatio,
+            },
         });
 
-        logger.info("Trading rules saved successfully", {
+        logger.info("Trading rules updated", {
             userId: user.id,
-            maxDailyTrades: savedRules.maxDailyTrades,
-            maxDailyLoss: savedRules.maxDailyLoss,
-            riskRewardRatio: savedRules.riskRewardRatio
+            maxDailyTrades: tradingRules.maxDailyTrades,
+            maxDailyLoss: tradingRules.maxDailyLoss,
+            riskRewardRatio: tradingRules.riskRewardRatio,
         });
 
         return NextResponse.json({
-            success: true,
-            message: "Trading rules saved successfully",
-            rules: {
-                maxDailyTrades: savedRules.maxDailyTrades,
-                maxDailyLoss: savedRules.maxDailyLoss,
-                riskRewardRatio: savedRules.riskRewardRatio
-            }
+            maxDailyTrades: tradingRules.maxDailyTrades,
+            maxDailyLoss: tradingRules.maxDailyLoss,
+            riskRewardRatio: tradingRules.riskRewardRatio,
+            createdAt: tradingRules.createdAt,
+            updatedAt: tradingRules.updatedAt,
         });
 
     } catch (error) {
-        logger.error("Error saving trading rules", {
+        logger.error("Trading rules update error", {
             error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
         });
+
         return NextResponse.json(
-            { error: "Internal server error" },
+            { error: "Failed to update trading rules" },
             { status: 500 }
         );
     }

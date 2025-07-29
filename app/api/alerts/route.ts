@@ -1,173 +1,223 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { alertService } from '@/lib/services/alert-service';
-import { notificationService } from '@/lib/services/notification-service';
-import { logger } from '@/lib/logger';
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
     try {
-        // Check authentication
         const { userId } = await auth();
         if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Get query parameters
         const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '50');
-        const offset = parseInt(searchParams.get('offset') || '0');
-        const severity = searchParams.get('severity')?.split(',') as ('low' | 'medium' | 'high' | 'critical')[] | undefined;
-        const type = searchParams.get('type')?.split(',') as ('daily_limit' | 'risk_threshold' | 'position_alert' | 'market_alert' | 'connection_alert')[] | undefined;
-        const isRead = searchParams.get('isRead') === 'true' ? true :
-            searchParams.get('isRead') === 'false' ? false : undefined;
-        const isAcknowledged = searchParams.get('isAcknowledged') === 'true' ? true :
-            searchParams.get('isAcknowledged') === 'false' ? false : undefined;
+        const isRead = searchParams.get("isRead");
+        const type = searchParams.get("type");
+        const severity = searchParams.get("severity");
+        const limit = parseInt(searchParams.get("limit") || "50");
+
+        // Get user from database
+        const user = await prisma.user.findUnique({
+            where: { clerkId: userId },
+        });
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
+        // Build where clause
+        const where: { userId: string; isRead?: boolean; type?: string; severity?: string } = { userId: user.id };
+
+        if (isRead !== null) {
+            where.isRead = isRead === "true";
+        }
+
+        if (type) {
+            where.type = type;
+        }
+
+        if (severity) {
+            where.severity = severity;
+        }
 
         // Get alerts
-        const alerts = await alertService.getUserAlerts(userId, {
-            limit,
-            offset,
-            severity,
-            type,
-            isRead,
-            isAcknowledged
+        const alerts = await prisma.alert.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            take: limit,
         });
 
-        // Get alert summary
-        const alertSummary = await alertService.getAlertSummary(userId);
-
-        logger.info('Alerts retrieved', {
-            userId,
-            alertsCount: alerts.length,
-            limit,
-            offset,
-            severity,
-            type
-        });
-
-        return NextResponse.json({
-            alerts,
-            alertSummary,
-            pagination: {
-                limit,
-                offset,
-                total: alertSummary.totalAlerts
-            }
-        });
+        return NextResponse.json(alerts);
 
     } catch (error) {
-        logger.error('Error getting alerts', {
-            error: error instanceof Error ? error.message : 'Unknown error'
+        logger.error("Alerts API error", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
         });
 
-        return NextResponse.json({
-            error: 'Failed to fetch alerts',
-            message: 'Please try again later'
-        }, { status: 500 });
+        return NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 }
+        );
     }
 }
 
 export async function POST(request: NextRequest) {
     try {
-        // Check authentication
         const { userId } = await auth();
         if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { action, alertId, ...data } = await request.json();
+        const { type, severity, title, message, metadata } = await request.json();
 
-        switch (action) {
-            case 'acknowledge':
-                if (!alertId) {
-                    return NextResponse.json({ error: 'Alert ID is required' }, { status: 400 });
-                }
-
-                const acknowledged = await alertService.acknowledgeAlert(alertId, userId);
-                return NextResponse.json({
-                    message: acknowledged ? 'Alert acknowledged' : 'Failed to acknowledge alert',
-                    success: acknowledged
-                });
-
-            case 'mark_read':
-                if (!alertId) {
-                    return NextResponse.json({ error: 'Alert ID is required' }, { status: 400 });
-                }
-
-                const marked = await alertService.markAlertAsRead(alertId, userId);
-                return NextResponse.json({
-                    message: marked ? 'Alert marked as read' : 'Failed to mark alert as read',
-                    success: marked
-                });
-
-            case 'mark_all_read':
-                const allMarked = await alertService.markAllAlertsAsRead(userId);
-                return NextResponse.json({
-                    message: allMarked ? 'All alerts marked as read' : 'Failed to mark alerts as read',
-                    success: allMarked
-                });
-
-            case 'generate_alerts':
-                const alerts = await alertService.generateAlerts(userId);
-                return NextResponse.json({
-                    message: 'Alerts generated successfully',
-                    alertsCount: alerts.length
-                });
-
-            case 'test_notification':
-                const { channel } = data;
-                const success = await notificationService.testNotification(userId, channel);
-                return NextResponse.json({
-                    message: success ? 'Test notification sent' : 'Failed to send test notification',
-                    success
-                });
-
-            default:
-                return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        // Validate input
+        if (!type || !severity || !title || !message) {
+            return NextResponse.json(
+                { error: "Type, severity, title, and message are required" },
+                { status: 400 }
+            );
         }
 
-    } catch (error) {
-        logger.error('Error in alerts POST API', {
-            error: error instanceof Error ? error.message : 'Unknown error'
+        // Validate type
+        const validTypes = [
+            "daily_limit",
+            "risk_threshold",
+            "position_alert",
+            "market_alert",
+            "connection_alert",
+        ];
+        if (!validTypes.includes(type)) {
+            return NextResponse.json(
+                { error: "Invalid alert type" },
+                { status: 400 }
+            );
+        }
+
+        // Validate severity
+        const validSeverities = ["low", "medium", "high", "critical"];
+        if (!validSeverities.includes(severity)) {
+            return NextResponse.json(
+                { error: "Invalid severity level" },
+                { status: 400 }
+            );
+        }
+
+        // Get or create user
+        let user = await prisma.user.findUnique({
+            where: { clerkId: userId },
         });
 
-        return NextResponse.json({
-            error: 'Failed to process request',
-            message: 'Please try again later'
-        }, { status: 500 });
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    clerkId: userId,
+                    email: "",
+                },
+            });
+        }
+
+        // Create alert
+        const alert = await prisma.alert.create({
+            data: {
+                userId: user.id,
+                type,
+                severity,
+                title,
+                message,
+                metadata: metadata || {},
+            },
+        });
+
+        logger.info("Alert created", {
+            userId: user.id,
+            alertId: alert.id,
+            type: alert.type,
+            severity: alert.severity,
+        });
+
+        return NextResponse.json(alert);
+
+    } catch (error) {
+        logger.error("Alert creation error", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
+        });
+
+        return NextResponse.json(
+            { error: "Failed to create alert" },
+            { status: 500 }
+        );
     }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function PATCH(request: NextRequest) {
     try {
-        // Check authentication
         const { userId } = await auth();
         if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { searchParams } = new URL(request.url);
-        const alertId = searchParams.get('alertId');
+        const { alertId, isRead, isAcknowledged } = await request.json();
 
         if (!alertId) {
-            return NextResponse.json({ error: 'Alert ID is required' }, { status: 400 });
+            return NextResponse.json(
+                { error: "Alert ID is required" },
+                { status: 400 }
+            );
         }
 
-        const deleted = await alertService.deleteAlert(alertId, userId);
-
-        return NextResponse.json({
-            message: deleted ? 'Alert deleted successfully' : 'Failed to delete alert',
-            success: deleted
+        // Get user from database
+        const user = await prisma.user.findUnique({
+            where: { clerkId: userId },
         });
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
+        // Find and update alert
+        const alert = await prisma.alert.findFirst({
+            where: {
+                id: alertId,
+                userId: user.id,
+            },
+        });
+
+        if (!alert) {
+            return NextResponse.json(
+                { error: "Alert not found" },
+                { status: 404 }
+            );
+        }
+
+        // Update alert
+        const updatedAlert = await prisma.alert.update({
+            where: { id: alertId },
+            data: {
+                isRead: isRead !== undefined ? isRead : alert.isRead,
+                isAcknowledged: isAcknowledged !== undefined ? isAcknowledged : alert.isAcknowledged,
+            },
+        });
+
+        logger.info("Alert updated", {
+            userId: user.id,
+            alertId: alert.id,
+            isRead: updatedAlert.isRead,
+            isAcknowledged: updatedAlert.isAcknowledged,
+        });
+
+        return NextResponse.json(updatedAlert);
 
     } catch (error) {
-        logger.error('Error deleting alert', {
-            error: error instanceof Error ? error.message : 'Unknown error'
+        logger.error("Alert update error", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
         });
 
-        return NextResponse.json({
-            error: 'Failed to delete alert',
-            message: 'Please try again later'
-        }, { status: 500 });
+        return NextResponse.json(
+            { error: "Failed to update alert" },
+            { status: 500 }
+        );
     }
 } 

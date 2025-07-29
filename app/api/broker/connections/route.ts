@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-
-const prisma = new PrismaClient();
 
 export async function GET() {
     try {
@@ -12,47 +10,96 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Get user from database
-        const user = await prisma.user.findUnique({
-            where: { clerkId: userId }
+        // Ensure user exists in database
+        const user = await prisma.user.upsert({
+            where: { clerkId: userId },
+            update: {},
+            create: {
+                clerkId: userId,
+                email: "",
+                firstName: "",
+                lastName: "",
+            }
         });
 
-        if (!user) {
-            return NextResponse.json({ error: "User not found" }, { status: 404 });
-        }
-
-        // Get user's broker connections
         const connections = await prisma.brokerConnection.findMany({
             where: { userId: user.id },
-            select: {
-                id: true,
-                broker: true,
-                createdAt: true,
-                updatedAt: true
-            },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: "desc" }
         });
 
-        logger.info("Broker connections fetched successfully", {
-            userId: user.id,
-            connectionCount: connections.length
-        });
+        logger.info("Broker connections retrieved", { userId: user.id, count: connections.length });
 
-        return NextResponse.json({
-            connections: connections.map(conn => ({
-                id: conn.id,
-                broker: conn.broker,
-                createdAt: conn.createdAt.toISOString(),
-                updatedAt: conn.updatedAt.toISOString()
-            }))
-        });
-
+        return NextResponse.json(connections);
     } catch (error) {
         logger.error("Error fetching broker connections", {
             error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
         });
         return NextResponse.json(
-            { error: "Internal server error" },
+            { error: "Failed to fetch broker connections" },
+            { status: 500 }
+        );
+    }
+}
+
+export async function POST(request: Request) {
+    try {
+        const { userId } = await auth();
+        if (!userId) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { broker } = body;
+
+        if (!broker) {
+            return NextResponse.json({ error: "Broker name is required" }, { status: 400 });
+        }
+
+        // Ensure user exists in database
+        const user = await prisma.user.upsert({
+            where: { clerkId: userId },
+            update: {},
+            create: {
+                clerkId: userId,
+                email: "",
+                firstName: "",
+                lastName: "",
+            }
+        });
+
+        // Check if connection already exists
+        const existingConnection = await prisma.brokerConnection.findUnique({
+            where: {
+                userId_broker: {
+                    userId: user.id,
+                    broker
+                }
+            }
+        });
+
+        if (existingConnection) {
+            return NextResponse.json({ error: "Connection already exists" }, { status: 409 });
+        }
+
+        const connection = await prisma.brokerConnection.create({
+            data: {
+                userId: user.id,
+                broker,
+                encryptedAccessToken: "", // Will be set during OAuth flow
+            }
+        });
+
+        logger.info("Broker connection created", { userId: user.id, broker });
+
+        return NextResponse.json(connection);
+    } catch (error) {
+        logger.error("Error creating broker connection", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
+        });
+        return NextResponse.json(
+            { error: "Failed to create broker connection" },
             { status: 500 }
         );
     }

@@ -122,6 +122,19 @@ class ApiClient {
         });
     }
 
+    async updatePerformanceGoal(id: string, goal: unknown): Promise<ApiResponse<unknown>> {
+        return this.request(`/api/performance-goals/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(goal),
+        });
+    }
+
+    async deletePerformanceGoal(id: string): Promise<ApiResponse<unknown>> {
+        return this.request(`/api/performance-goals/${id}`, {
+            method: "DELETE",
+        });
+    }
+
     // Risk Management API
     async getRiskAssessment(): Promise<ApiResponse<unknown>> {
         return this.request("/api/risk-management/analysis");
@@ -178,6 +191,12 @@ class ApiClient {
         return this.request(`/api/broker/disconnect`, {
             method: "POST",
             body: JSON.stringify({ brokerId }),
+        });
+    }
+
+    async getZerodhaLoginUrl(): Promise<ApiResponse<unknown>> {
+        return this.request("/api/auth/zerodha", {
+            method: "GET",
         });
     }
 

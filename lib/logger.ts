@@ -20,23 +20,13 @@ class Logger {
   }
 
   private log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
-    const entry = this.formatMessage(level, message, context);
-    
-    // In development, use console for better debugging
-    if (this.isDevelopment) {
-      const consoleMethod = level === 'error' ? console.error : 
-                           level === 'warn' ? console.warn : 
-                           console.log;
-      
-      if (context) {
-        consoleMethod(`[${level.toUpperCase()}] ${message}`, context);
-      } else {
-        consoleMethod(`[${level.toUpperCase()}] ${message}`);
-      }
-    } else {
-      // In production, use structured JSON logging
-      console.log(JSON.stringify(entry));
+    // Only log errors and warnings to console, skip info and debug
+    if (level === 'error') {
+      console.error(`[ERROR] ${message}`, context);
+    } else if (level === 'warn') {
+      console.warn(`[WARN] ${message}`, context);
     }
+    // Info and debug logs are silent in development
   }
 
   debug(message: string, context?: Record<string, unknown>): void {

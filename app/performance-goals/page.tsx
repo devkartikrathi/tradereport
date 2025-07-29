@@ -1,30 +1,30 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+"use client";
+
+import { useState, useEffect } from "react";
 import Sidebar from "@/components/navigation/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Target,
-  TrendingUp,
   CheckCircle,
-  Clock,
   Plus,
   Edit,
   Trash2,
   Lightbulb,
-  BarChart3,
   Activity,
-  Calendar,
   Percent,
   DollarSign,
   Shield,
-  Zap,
 } from "lucide-react";
-import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
-import ResetDataButton from "@/components/reset-data-button";
+import { apiClient } from "@/lib/api-client";
+import { PageLoading } from "@/components/ui/loading";
 
 interface PerformanceGoal {
   id: string;
@@ -33,465 +33,427 @@ interface PerformanceGoal {
   category: string;
   targetValue: number;
   currentValue: number;
-  startDate: Date;
-  targetDate?: Date;
+  startDate: string;
+  targetDate?: string;
   isActive: boolean;
   progress: number;
   insights?: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface GoalInsight {
-  id: string;
-  insightType: string;
+interface GoalFormData {
   title: string;
   description: string;
-  confidence: number;
-  priority: string;
-  actionableSteps: string[];
-  expectedImpact: string;
+  category: string;
+  targetValue: string;
+  targetDate: string;
 }
 
-export default async function PerformanceGoalsPage() {
-  const { userId } = await auth();
+export default function PerformanceGoalsPage() {
+  const [goals, setGoals] = useState<PerformanceGoal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<PerformanceGoal | null>(null);
+  const [formData, setFormData] = useState<GoalFormData>({
+    title: "",
+    description: "",
+    category: "profit_target",
+    targetValue: "",
+    targetDate: "",
+  });
 
-  if (!userId) {
-    return <div>Sign in to view this page</div>;
-  }
+  useEffect(() => {
+    fetchGoals();
+  }, []);
 
-  const user = await currentUser();
+  const fetchGoals = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-  // Get or create user and their performance goals data
-  let userRecord = null;
-  let goals: PerformanceGoal[] = [];
-  let insights: GoalInsight[] = [];
+      const result = await apiClient.getPerformanceGoals();
+      
+      if (!result.success || result.error) {
+        throw new Error(result.error || "Failed to fetch goals");
+      }
 
-  try {
-    userRecord = await prisma.user.findUnique({
-      where: { clerkId: userId },
-      include: {
-        analytics: true,
-      },
-    });
-
-    // Create user if doesn't exist
-    if (!userRecord) {
-      userRecord = await prisma.user.create({
-        data: {
-          clerkId: userId,
-          email: user?.emailAddresses?.[0]?.emailAddress || "",
-          firstName: user?.firstName || "",
-          lastName: user?.lastName || "",
-        },
-        include: {
-          analytics: true,
-        },
-      });
+      setGoals(result.data as PerformanceGoal[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+      apiClient.handleError({ error: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // For now, we'll use an empty array since the Prisma client needs to be regenerated
-    goals = [];
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const goalData = {
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        targetValue: parseFloat(formData.targetValue),
+        targetDate: formData.targetDate || undefined,
+      };
 
-    // Fetch insights from API (simplified for now)
-    insights = [];
+      const result = editingGoal 
+        ? await apiClient.updatePerformanceGoal(editingGoal.id, goalData)
+        : await apiClient.createPerformanceGoal(goalData);
 
-  } catch (error) {
-    console.error("Error fetching/creating user:", error);
-  }
+      if (!result.success || result.error) {
+        throw new Error(result.error || "Failed to save goal");
+      }
 
-  // Calculate summary statistics
-  const totalGoals = goals.length;
-  const activeGoals = goals.filter(goal => goal.isActive).length;
-  const completedGoals = goals.filter(goal => goal.progress >= 100).length;
-  const averageProgress = goals.length > 0 
-    ? goals.reduce((sum, goal) => sum + goal.progress, 0) / goals.length 
-    : 0;
+      setShowForm(false);
+      setEditingGoal(null);
+      resetForm();
+      fetchGoals();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save goal");
+      apiClient.handleError({ error: err instanceof Error ? err.message : "Unknown error" });
+    }
+  };
+
+  const handleDelete = async (goalId: string) => {
+    try {
+      const result = await apiClient.deletePerformanceGoal(goalId);
+      
+      if (!result.success || result.error) {
+        throw new Error(result.error || "Failed to delete goal");
+      }
+
+      fetchGoals();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete goal");
+      apiClient.handleError({ error: err instanceof Error ? err.message : "Unknown error" });
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: "",
+      description: "",
+      category: "profit_target",
+      targetValue: "",
+      targetDate: "",
+    });
+  };
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'profit_target':
-        return DollarSign;
-      case 'win_rate':
-        return Percent;
-      case 'risk_management':
-        return Shield;
-      case 'consistency':
-        return Activity;
+      case "profit_target":
+        return <DollarSign className="h-4 w-4" />;
+      case "win_rate":
+        return <Percent className="h-4 w-4" />;
+      case "risk_management":
+        return <Shield className="h-4 w-4" />;
+      case "consistency":
+        return <Activity className="h-4 w-4" />;
       default:
-        return Target;
+        return <Target className="h-4 w-4" />;
     }
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'profit_target':
-        return 'bg-green-500';
-      case 'win_rate':
-        return 'bg-blue-500';
-      case 'risk_management':
-        return 'bg-orange-500';
-      case 'consistency':
-        return 'bg-purple-500';
+      case "profit_target":
+        return "bg-green-100 text-green-800";
+      case "win_rate":
+        return "bg-blue-100 text-blue-800";
+      case "risk_management":
+        return "bg-orange-100 text-orange-800";
+      case "consistency":
+        return "bg-purple-100 text-purple-800";
       default:
-        return 'bg-gray-500';
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getProgressColor = (progress: number) => {
-    if (progress >= 80) return 'bg-green-500';
-    if (progress >= 60) return 'bg-blue-500';
-    if (progress >= 40) return 'bg-yellow-500';
-    if (progress >= 20) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (progress >= 80) return "bg-green-500";
+    if (progress >= 60) return "bg-yellow-500";
+    if (progress >= 40) return "bg-orange-500";
+    return "bg-red-500";
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-500';
-    }
-  };
+  if (loading) {
+    return (
+      <Sidebar>
+        <PageLoading 
+          title="Loading Performance Goals"
+          description="Please wait while we fetch your goals"
+        />
+      </Sidebar>
+    );
+  }
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar>
-        <div className="flex-1 overflow-auto">
-          <div className="container mx-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-3xl font-bold">Performance Goals</h1>
-                <p className="text-muted-foreground">
-                  Set and track your trading performance goals
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  New Goal
-                </Button>
-                <ResetDataButton />
-              </div>
-            </div>
+    <Sidebar>
+      <div className="p-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Performance Goals</h1>
+            <p className="text-muted-foreground">
+              Set and track your trading performance targets
+            </p>
+          </div>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Goal
+          </Button>
+        </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Goals</CardTitle>
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{totalGoals}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Goals created
-                  </p>
-                </CardContent>
-              </Card>
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Goals</CardTitle>
-                  <Activity className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">{activeGoals}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Currently tracking
-                  </p>
-                </CardContent>
-              </Card>
+        <Tabs defaultValue="active" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="active">Active Goals</TabsTrigger>
+            <TabsTrigger value="completed">Completed</TabsTrigger>
+            <TabsTrigger value="insights">AI Insights</TabsTrigger>
+          </TabsList>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{completedGoals}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Goals achieved
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Avg Progress</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-purple-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-purple-600">
-                    {averageProgress.toFixed(1)}%
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Average completion
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Main Content */}
-            <Tabs defaultValue="goals" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="goals">Goals</TabsTrigger>
-                <TabsTrigger value="insights">AI Insights</TabsTrigger>
-                <TabsTrigger value="progress">Progress</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="goals" className="space-y-4">
-                <Card>
+          <TabsContent value="active" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {goals.filter(goal => goal.isActive).map((goal) => (
+                <Card key={goal.id} className="relative">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Target className="h-5 w-5" />
-                      Performance Goals
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {goals.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground mb-4">
-                          No performance goals set yet. Create your first goal to get started.
-                        </p>
-                        <Button className="flex items-center gap-2">
-                          <Plus className="h-4 w-4" />
-                          Create First Goal
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center space-x-2">
+                        {getCategoryIcon(goal.category)}
+                        <Badge className={getCategoryColor(goal.category)}>
+                          {goal.category.replace("_", " ")}
+                        </Badge>
+                      </div>
+                      <div className="flex space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingGoal(goal);
+                            setFormData({
+                              title: goal.title,
+                              description: goal.description || "",
+                              category: goal.category,
+                              targetValue: goal.targetValue.toString(),
+                              targetDate: goal.targetDate || "",
+                            });
+                            setShowForm(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(goal.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {goals.map((goal) => {
-                          const CategoryIcon = getCategoryIcon(goal.category);
-                          return (
-                            <div
-                              key={goal.id}
-                              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <CategoryIcon className="h-5 w-5" />
-                                  <h3 className="font-semibold">{goal.title}</h3>
-                                  <Badge
-                                    className={`${getCategoryColor(goal.category)} text-white`}
-                                  >
-                                    {goal.category.replace('_', ' ')}
-                                  </Badge>
-                                  {goal.isActive ? (
-                                    <Badge className="bg-green-500 text-white">
-                                      Active
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="secondary">
-                                      Inactive
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button size="sm" variant="outline">
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button size="sm" variant="outline">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              
-                              {goal.description && (
-                                <p className="text-sm text-muted-foreground mb-3">
-                                  {goal.description}
-                                </p>
-                              )}
-
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span>Progress</span>
-                                  <span>{goal.progress.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all ${getProgressColor(goal.progress)}`}
-                                    style={{ width: `${goal.progress}%` }}
-                                  />
-                                </div>
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                  <span>Current: {goal.currentValue.toFixed(2)}</span>
-                                  <span>Target: {goal.targetValue.toFixed(2)}</span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-1">
-                                    <Calendar className="h-4 w-4" />
-                                    <span>Started: {format(new Date(goal.startDate), 'MMM dd, yyyy')}</span>
-                                  </div>
-                                  {goal.targetDate && (
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-4 w-4" />
-                                      <span>Due: {format(new Date(goal.targetDate), 'MMM dd, yyyy')}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button size="sm" variant="outline">
-                                  View Insights
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    </div>
+                    <CardTitle className="text-lg">{goal.title}</CardTitle>
+                    {goal.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {goal.description}
+                      </p>
                     )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="insights" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Lightbulb className="h-5 w-5" />
-                      AI Goal Insights
-                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {insights.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Lightbulb className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">
-                          No AI insights available yet. Create goals to get personalized insights.
-                        </p>
+                    <div className="space-y-4">
+                      <div className="flex justify-between text-sm">
+                        <span>Progress</span>
+                        <span>{goal.progress.toFixed(1)}%</span>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {insights.map((insight) => (
-                          <div
-                            key={insight.id}
-                            className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold">{insight.title}</h3>
-                                <Badge
-                                  className={`${getPriorityColor(insight.priority)} text-white`}
-                                >
-                                  {insight.priority}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">
-                                  {insight.confidence.toFixed(0)}% confidence
-                                </span>
-                              </div>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-3">
-                              {insight.description}
-                            </p>
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium">Actionable Steps:</h4>
-                              <ul className="text-sm text-muted-foreground space-y-1">
-                                {insight.actionableSteps.map((step, index) => (
-                                  <li key={index} className="flex items-start gap-2">
-                                    <span className="text-primary">•</span>
-                                    {step}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="mt-3 pt-3 border-t">
-                              <p className="text-sm">
-                                <span className="font-medium">Expected Impact:</span>{' '}
-                                {insight.expectedImpact}
-                              </p>
-                            </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${getProgressColor(goal.progress)}`}
+                          style={{ width: `${Math.min(goal.progress, 100)}%` }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Current</span>
+                          <div className="font-semibold">
+                            {goal.category === "profit_target" 
+                              ? formatCurrency(goal.currentValue)
+                              : `${goal.currentValue.toFixed(1)}%`
+                            }
                           </div>
-                        ))}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Target</span>
+                          <div className="font-semibold">
+                            {goal.category === "profit_target" 
+                              ? formatCurrency(goal.targetValue)
+                              : `${goal.targetValue.toFixed(1)}%`
+                            }
+                          </div>
+                        </div>
                       </div>
-                    )}
+                      <div className="text-xs text-muted-foreground">
+                        Started: {format(new Date(goal.startDate), "MMM dd, yyyy")}
+                        {goal.targetDate && (
+                          <span className="ml-2">
+                            • Target: {format(new Date(goal.targetDate), "MMM dd, yyyy")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
+              ))}
+            </div>
+          </TabsContent>
 
-              <TabsContent value="progress" className="space-y-4">
-                <Card>
+          <TabsContent value="completed" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {goals.filter(goal => !goal.isActive).map((goal) => (
+                <Card key={goal.id} className="relative opacity-75">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Goal Progress Tracking
-                    </CardTitle>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <Badge className={getCategoryColor(goal.category)}>
+                          {goal.category.replace("_", " ")}
+                        </Badge>
+                      </div>
+                    </div>
+                    <CardTitle className="text-lg">{goal.title}</CardTitle>
+                    {goal.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {goal.description}
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent>
-                    {goals.length === 0 ? (
-                      <div className="text-center py-8">
-                        <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">
-                          No goals to track yet. Create goals to see progress analytics.
-                        </p>
+                    <div className="space-y-4">
+                      <div className="flex justify-between text-sm">
+                        <span>Final Progress</span>
+                        <span>{goal.progress.toFixed(1)}%</span>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {goals.map((goal) => {
-                          const CategoryIcon = getCategoryIcon(goal.category);
-                          return (
-                            <div
-                              key={goal.id}
-                              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-2 mb-3">
-                                <CategoryIcon className="h-5 w-5" />
-                                <h3 className="font-semibold">{goal.title}</h3>
-                                <Badge
-                                  className={`${getCategoryColor(goal.category)} text-white`}
-                                >
-                                  {goal.category.replace('_', ' ')}
-                                </Badge>
-                              </div>
-                              
-                              <div className="space-y-3">
-                                <div className="flex justify-between text-sm">
-                                  <span>Current Progress</span>
-                                  <span className="font-medium">{goal.progress.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all ${getProgressColor(goal.progress)}`}
-                                    style={{ width: `${goal.progress}%` }}
-                                  />
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">Current Value:</span>
-                                    <div className="font-medium">{goal.currentValue.toFixed(2)}</div>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Target Value:</span>
-                                    <div className="font-medium">{goal.targetValue.toFixed(2)}</div>
-                                  </div>
-                                </div>
-
-                                {goal.targetDate && (
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Clock className="h-4 w-4" />
-                                    <span>Target Date: {format(new Date(goal.targetDate), 'MMM dd, yyyy')}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="h-2 rounded-full bg-green-500"
+                          style={{ width: `${Math.min(goal.progress, 100)}%` }}
+                        />
                       </div>
-                    )}
+                      <div className="text-xs text-muted-foreground">
+                        Completed: {format(new Date(goal.updatedAt), "MMM dd, yyyy")}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
-            </Tabs>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="insights" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Lightbulb className="h-5 w-5" />
+                  <span>AI-Powered Insights</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  AI insights about your goal progress will appear here.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Goal Form Modal */}
+        {showForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-semibold mb-4">
+                {editingGoal ? "Edit Goal" : "Add New Goal"}
+              </h2>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Title</label>
+                  <Input
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Enter goal title"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <Textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Enter goal description"
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category</label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="profit_target">Profit Target</SelectItem>
+                      <SelectItem value="win_rate">Win Rate</SelectItem>
+                      <SelectItem value="risk_management">Risk Management</SelectItem>
+                      <SelectItem value="consistency">Consistency</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Target Value</label>
+                  <Input
+                    type="number"
+                    value={formData.targetValue}
+                    onChange={(e) => setFormData({ ...formData, targetValue: e.target.value })}
+                    placeholder="Enter target value"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Target Date (Optional)</label>
+                  <Input
+                    type="date"
+                    value={formData.targetDate}
+                    onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <Button type="submit" className="flex-1">
+                    {editingGoal ? "Update Goal" : "Create Goal"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditingGoal(null);
+                      resetForm();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      </Sidebar>
-    </div>
+        )}
+      </div>
+    </Sidebar>
   );
 } 

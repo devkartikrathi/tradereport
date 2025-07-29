@@ -1,22 +1,22 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const formData = await request.formData();
-    const broker = formData.get('broker') as string;
+    const { brokerId } = await request.json();
 
-    if (!broker) {
-      return NextResponse.json({ error: "Broker not specified" }, { status: 400 });
+    if (!brokerId) {
+      return NextResponse.json(
+        { error: "Broker ID is required" },
+        { status: 400 }
+      );
     }
 
     // Get user from database
@@ -28,20 +28,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Delete broker connection
-    await prisma.brokerConnection.deleteMany({
+    // Find and delete the broker connection
+    const connection = await prisma.brokerConnection.findFirst({
       where: {
+        id: brokerId,
         userId: user.id,
-        broker: broker,
       },
     });
 
-    console.log(`Broker ${broker} disconnected for user: ${userId}`);
-    
-    return NextResponse.redirect(new URL('/broker-connection?success=disconnected', request.url));
+    if (!connection) {
+      return NextResponse.json(
+        { error: "Broker connection not found" },
+        { status: 404 }
+      );
+    }
+
+    // Delete the connection
+    await prisma.brokerConnection.delete({
+      where: {
+        id: brokerId,
+      },
+    });
+
+    logger.info("Broker connection disconnected", {
+      userId: user.id,
+      brokerId,
+      broker: connection.broker,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Broker connection disconnected successfully",
+      broker: connection.broker,
+    });
 
   } catch (error) {
-    console.error("Error disconnecting broker:", error);
-    return NextResponse.redirect(new URL('/broker-connection?error=disconnect_error', request.url));
+    logger.error("Broker disconnect error", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      userId: await auth().then(auth => auth.userId).catch(() => "unknown"),
+    });
+
+    return NextResponse.json(
+      { error: "Failed to disconnect broker" },
+      { status: 500 }
+    );
   }
 } 
