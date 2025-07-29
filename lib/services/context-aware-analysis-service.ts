@@ -81,11 +81,11 @@ export class ContextAwareAnalysisService {
             // Analyze market conditions
             const marketCondition = await marketDataService.analyzeMarketConditions(marketData);
             const volatilityAnalysis = await marketDataService.analyzeVolatility(marketData);
-            const trendAnalysis = await marketDataService.analyzeTrends(marketData);
+            // const trendAnalysis = await marketDataService.analyzeTrends(marketData);
             const sectorAnalysis = await marketDataService.getSectorAnalysis(marketData);
 
             // Generate AI-powered insights
-            const aiInsights = await this.generateAIMarketInsights(tradingData, marketData);
+            // const aiInsights = await this.generateAIMarketInsights(tradingData, marketData);
 
             // Create sector insights
             const sectorInsights = this.createSectorInsights(sectorAnalysis, marketCondition);
@@ -173,7 +173,7 @@ export class ContextAwareAnalysisService {
     async generateMarketAwareRecommendations(userId: string): Promise<MarketAwareRecommendation[]> {
         try {
             const marketData = await marketDataService.getCurrentMarketData();
-            const tradingData = await analyticsService.getUserAnalytics(userId);
+            // const tradingData = await analyticsService.getUserAnalytics(userId);
             const marketCondition = await marketDataService.analyzeMarketConditions(marketData);
             const sectorAnalysis = await marketDataService.getSectorAnalysis(marketData);
 

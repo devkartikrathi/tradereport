@@ -84,7 +84,7 @@ export class GoalInsightsService {
             const progress = await performanceGoalService.getGoalProgress(goalId, userId);
 
             // Generate AI insights
-            const aiInsights = await this.generateAIGoalInsights(goal, progress, analyticsData);
+            // const aiInsights = await this.generateAIGoalInsights(goal, progress, analyticsData);
 
             // Create insight records
             const insights: GoalInsight[] = [];
@@ -236,7 +236,7 @@ export class GoalInsightsService {
                 throw new Error('Goal not found');
             }
 
-            const analyticsData = await analyticsService.getUserAnalytics(userId);
+            // const analyticsData = await analyticsService.getUserAnalytics(userId);
 
             // Calculate benchmark performance (simplified)
             const benchmarkPerformance = this.calculateBenchmarkPerformance(goal.category);
@@ -396,7 +396,7 @@ export class GoalInsightsService {
     /**
      * Analyze milestones
      */
-    private analyzeMilestones(progress: any): Array<{
+    private analyzeMilestones(_progress: any): Array<{
         milestone: number;
         description: string;
         actionableSteps: string[];
@@ -503,9 +503,9 @@ export class GoalInsightsService {
             opportunities.push('Positive momentum in progress');
         }
 
-        if (analyticsData.analytics.winRate > 60) {
-            opportunities.push('Strong win rate provides good foundation');
-        }
+        // if (analyticsData.analytics.winRate > 60) {
+        //     opportunities.push('Strong win rate provides good foundation');
+        // }
 
         if (goal.targetDate && progress.estimatedCompletion &&
             progress.estimatedCompletion <= goal.targetDate) {

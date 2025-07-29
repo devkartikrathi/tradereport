@@ -496,7 +496,7 @@ export class PerformanceGoalService {
     /**
      * Calculate current value based on category
      */
-    private calculateCurrentValue(category: PerformanceGoal['category'], analyticsData: any): number {
+    private calculateCurrentValue(category: PerformanceGoal['category'], analyticsData: Record<string, unknown>): number {
         switch (category) {
             case 'profit_target':
                 return analyticsData.analytics.totalNetProfitLoss || 0;
@@ -532,7 +532,7 @@ export class PerformanceGoalService {
     /**
      * Estimate completion date
      */
-    private estimateCompletionDate(goal: any, currentValue: number, progress: number): Date | undefined {
+    private estimateCompletionDate(goal: Record<string, unknown>, currentValue: number, progress: number): Date | undefined {
         if (progress >= 100) return undefined;
         if (progress === 0) return undefined;
 

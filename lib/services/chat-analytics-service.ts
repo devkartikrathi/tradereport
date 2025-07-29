@@ -315,7 +315,7 @@ export class ChatAnalyticsService {
                 hourCounts.set(hour, (hourCounts.get(hour) || 0) + 1);
             });
             const activeHours = Array.from(hourCounts.entries())
-                .filter(([_, count]) => count > 1)
+                .filter(([, count]) => count > 1)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 3)
                 .map(([hour]) => hour);
@@ -413,7 +413,7 @@ export class ChatAnalyticsService {
     /**
      * Identify areas for improvement based on chat patterns
      */
-    private identifyImprovementAreas(messages: any[]): string[] {
+    private identifyImprovementAreas(messages: Record<string, unknown>[]): string[] {
         const improvements: string[] = [];
 
         // Check for short sessions (might indicate confusion)

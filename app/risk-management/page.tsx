@@ -11,15 +11,9 @@ import {
   CheckCircle,
   Target,
   Lightbulb,
-  BarChart3,
-  Activity,
   Clock,
-  Zap,
-  DollarSign,
-  Percent,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import ResetDataButton from "@/components/reset-data-button";
 

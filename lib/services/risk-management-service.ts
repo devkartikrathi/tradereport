@@ -242,7 +242,7 @@ export class RiskManagementService {
     /**
      * Analyze stop-loss strategies
      */
-    private async analyzeStopLossStrategies(trades: any[], tradingRules: any): Promise<RiskMetrics['stopLoss']> {
+    private async analyzeStopLossStrategies(trades: any[], _tradingRules: any): Promise<RiskMetrics['stopLoss']> {
         // Calculate average stop-loss distance
         const stopLossDistances = trades.map(trade => {
             const entryPrice = trade.buyPrice;
@@ -290,7 +290,7 @@ export class RiskManagementService {
     /**
      * Analyze portfolio risk
      */
-    private async analyzePortfolioRisk(trades: any[], tradingRules: any): Promise<RiskMetrics['portfolioRisk']> {
+    private async analyzePortfolioRisk(trades: any[], _tradingRules: any): Promise<RiskMetrics['portfolioRisk']> {
         // Calculate portfolio concentration
         const symbolPositions = trades.reduce((acc, trade) => {
             acc[trade.symbol] = (acc[trade.symbol] || 0) + (trade.quantity * trade.buyPrice);

@@ -6,8 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
-  TrendingUp, 
-  TrendingDown, 
   AlertTriangle, 
   CheckCircle, 
   Clock, 
@@ -15,7 +13,6 @@ import {
   Eye,
   EyeOff,
   Bell,
-  BellOff,
   Activity,
   DollarSign,
   BarChart3,
@@ -92,8 +89,8 @@ export default function MonitoringPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [showAlerts, setShowAlerts] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
 
   // Fetch monitoring data
   const fetchMonitoringData = async () => {
@@ -154,7 +151,7 @@ export default function MonitoringPage() {
         ));
         toast.success('Alert acknowledged');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to acknowledge alert');
     }
   };
@@ -175,7 +172,7 @@ export default function MonitoringPage() {
             : alert
         ));
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to mark alert as read');
     }
   };
@@ -302,7 +299,7 @@ export default function MonitoringPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today's Trades</CardTitle>
+              <CardTitle className="text-sm font-medium">Today&apos;s Trades</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -465,7 +462,7 @@ export default function MonitoringPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <BarChart3 className="h-5 w-5" />
-              <span>Today's Trades</span>
+                              <span>Today&apos;s Trades</span>
               <Badge variant="secondary">{monitoringData.todayTrades.length}</Badge>
             </CardTitle>
             <CardDescription>

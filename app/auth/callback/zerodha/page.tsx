@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function ZerodhaCallbackPage() {
+function ZerodhaCallbackContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -29,5 +29,21 @@ export default function ZerodhaCallbackPage() {
         <p className="text-gray-600">Please wait while we complete your authentication...</p>
       </div>
     </div>
+  );
+}
+
+export default function ZerodhaCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold mb-2">Loading...</h2>
+          <p className="text-gray-600">Please wait...</p>
+        </div>
+      </div>
+    }>
+      <ZerodhaCallbackContent />
+    </Suspense>
   );
 } 

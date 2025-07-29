@@ -105,7 +105,7 @@ export class AlertService {
     /**
      * Generate position-specific alerts
      */
-    private async generatePositionAlerts(userId: string, monitoringData: any): Promise<Alert[]> {
+    private async generatePositionAlerts(userId: string, monitoringData: Record<string, unknown>): Promise<Alert[]> {
         const alerts: Alert[] = [];
 
         for (const position of monitoringData.positions) {
@@ -282,7 +282,7 @@ export class AlertService {
                 return [];
             }
 
-            const whereClause: any = { userId: user.id };
+            const whereClause: Record<string, unknown> = { userId: user.id };
 
             if (options?.severity) {
                 whereClause.severity = { in: options.severity };

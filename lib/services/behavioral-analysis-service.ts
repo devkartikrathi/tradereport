@@ -1,7 +1,12 @@
-import { prisma } from '@/lib/prisma';
-import { analyticsService } from './analytics-service';
-import { generateBehavioralAnalysis } from '@/lib/gemini';
-import { logger } from '@/lib/logger';
+import { PrismaClient, MatchedTrade } from "@prisma/client";
+import { logger } from "@/lib/logger";
+import { Analytics, Trade } from "@/lib/types";
+import { TradingRules } from "./trading-rules-service";
+import { AnalyticsService } from "./analytics-service";
+import { generateBehavioralAnalysis } from "@/lib/gemini";
+
+const prisma = new PrismaClient();
+const analyticsService = new AnalyticsService();
 
 export interface BehavioralPattern {
     type: 'emotional' | 'risk_taking' | 'consistency' | 'discipline';
@@ -179,7 +184,7 @@ export class BehavioralAnalysisService {
     /**
      * Analyze emotional trading patterns
      */
-    private async analyzeEmotionalPatterns(trades: any[], tradingRules: any): Promise<EmotionalPattern[]> {
+    private async analyzeEmotionalPatterns(trades: MatchedTrade[]): Promise<EmotionalPattern[]> {
         const patterns: EmotionalPattern[] = [];
 
         // FOMO (Fear of Missing Out) trading detection
@@ -208,19 +213,19 @@ export class BehavioralAnalysisService {
     /**
      * Analyze risk-taking behavior patterns
      */
-    private async analyzeRiskTakingPatterns(trades: any[], tradingRules: any): Promise<RiskTakingPattern[]> {
+    private async analyzeRiskTakingPatterns(trades: MatchedTrade[], tradingRules: TradingRules | null): Promise<RiskTakingPattern[]> {
         const patterns: RiskTakingPattern[] = [];
 
         // Position sizing analysis
-        const positionSizingPattern = this.analyzePositionSizing(trades, tradingRules);
+        const positionSizingPattern = tradingRules ? this.analyzePositionSizing(trades, tradingRules) : null;
         if (positionSizingPattern) patterns.push(positionSizingPattern);
 
         // Risk-reward ratio analysis
-        const riskRewardPattern = this.analyzeRiskRewardRatio(trades, tradingRules);
+        const riskRewardPattern = tradingRules ? this.analyzeRiskRewardRatio(trades, tradingRules) : null;
         if (riskRewardPattern) patterns.push(riskRewardPattern);
 
         // Stop-loss adherence
-        const stopLossPattern = this.analyzeStopLossAdherence(trades, tradingRules);
+        const stopLossPattern = tradingRules ? this.analyzeStopLossAdherence(trades, tradingRules) : null;
         if (stopLossPattern) patterns.push(stopLossPattern);
 
         // Leverage usage
@@ -237,7 +242,7 @@ export class BehavioralAnalysisService {
     /**
      * Analyze consistency patterns
      */
-    private async analyzeConsistencyPatterns(trades: any[], tradingRules: any): Promise<ConsistencyPattern[]> {
+    private async analyzeConsistencyPatterns(trades: Trade[], tradingRules: TradingRules): Promise<ConsistencyPattern[]> {
         const patterns: ConsistencyPattern[] = [];
 
         // Trading frequency consistency
@@ -266,7 +271,7 @@ export class BehavioralAnalysisService {
     /**
      * Analyze discipline patterns
      */
-    private async analyzeDisciplinePatterns(trades: any[], tradingRules: any): Promise<DisciplinePattern[]> {
+    private async analyzeDisciplinePatterns(trades: Trade[], tradingRules: TradingRules): Promise<DisciplinePattern[]> {
         const patterns: DisciplinePattern[] = [];
 
         // Rule following behavior
@@ -295,17 +300,17 @@ export class BehavioralAnalysisService {
     /**
      * Detect FOMO trading pattern
      */
-    private detectFOMOPattern(trades: any[]): EmotionalPattern | null {
+    private detectFOMOPattern(trades: Trade[]): EmotionalPattern | null {
         // Analyze trades after significant market moves
         const fomoTrades = trades.filter(trade => {
             // Look for trades with high volume, quick entry/exit, and poor timing
             const duration = trade.duration || 0;
-            const profit = trade.profit || 0;
+            const profit = trade.profitLoss || 0;
             return duration < 60 && profit < 0; // Quick trades with losses
         });
 
         if (fomoTrades.length > trades.length * 0.2) { // More than 20% of trades
-            const totalLoss = fomoTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+            const totalLoss = fomoTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0);
             const avgLoss = totalLoss / fomoTrades.length;
 
             return {
@@ -328,16 +333,16 @@ export class BehavioralAnalysisService {
     /**
      * Detect revenge trading pattern
      */
-    private detectRevengeTradingPattern(trades: any[]): EmotionalPattern | null {
+    private detectRevengeTradingPattern(trades: Trade[]): EmotionalPattern | null {
         // Look for trades immediately after losses
-        const revengeTrades = [];
+        const revengeTrades: Trade[] = [];
 
         for (let i = 1; i < trades.length; i++) {
             const prevTrade = trades[i - 1];
             const currentTrade = trades[i];
 
-            if (prevTrade.profit < 0 && currentTrade.profit < 0) {
-                const timeDiff = new Date(currentTrade.sellDate).getTime() - new Date(prevTrade.sellDate).getTime();
+            if (prevTrade.profitLoss < 0 && currentTrade.profitLoss < 0) {
+                const timeDiff = new Date(currentTrade.date).getTime() - new Date(prevTrade.date).getTime();
                 if (timeDiff < 24 * 60 * 60 * 1000) { // Within 24 hours
                     revengeTrades.push(currentTrade);
                 }
@@ -345,7 +350,7 @@ export class BehavioralAnalysisService {
         }
 
         if (revengeTrades.length > 0) {
-            const totalLoss = revengeTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+            const totalLoss = revengeTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0);
             const avgLoss = totalLoss / revengeTrades.length;
 
             return {
@@ -368,34 +373,34 @@ export class BehavioralAnalysisService {
     /**
      * Detect overconfidence pattern
      */
-    private detectOverconfidencePattern(trades: any[]): EmotionalPattern | null {
-        // Look for increased position sizes after wins
-        const overconfidenceTrades = [];
+    private detectOverconfidencePattern(trades: Trade[]): EmotionalPattern | null {
+        // Look for patterns of increasing position sizes after wins
+        const overconfidentTrades: Trade[] = [];
 
         for (let i = 1; i < trades.length; i++) {
             const prevTrade = trades[i - 1];
             const currentTrade = trades[i];
 
-            if (prevTrade.profit > 0 && currentTrade.quantity > prevTrade.quantity * 1.5) {
-                overconfidenceTrades.push(currentTrade);
+            if (prevTrade.profitLoss > 0 && currentTrade.quantity > prevTrade.quantity * 1.5) {
+                overconfidentTrades.push(currentTrade);
             }
         }
 
-        if (overconfidenceTrades.length > 0) {
-            const totalLoss = overconfidenceTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
-            const avgLoss = totalLoss / overconfidenceTrades.length;
+        if (overconfidentTrades.length > 0) {
+            const totalLoss = overconfidentTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0);
+            const avgLoss = totalLoss / overconfidentTrades.length;
 
             return {
                 type: 'overconfidence',
-                severity: this.calculateSeverity(overconfidenceTrades.length / trades.length),
+                severity: this.calculateSeverity(overconfidentTrades.length / trades.length),
                 evidence: {
-                    frequency: overconfidenceTrades.length,
+                    frequency: overconfidentTrades.length,
                     totalLoss,
                     avgLoss,
-                    timePattern: 'Increased position sizes after wins',
+                    timePattern: 'Increasing position sizes after wins',
                     triggerEvents: ['Previous wins', 'Overconfidence']
                 },
-                description: `Detected ${overconfidenceTrades.length} overconfidence trades with average loss of ₹${Math.abs(avgLoss).toFixed(2)}`
+                description: `Detected ${overconfidentTrades.length} overconfident trades with average loss of ₹${Math.abs(avgLoss).toFixed(2)}`
             };
         }
 
@@ -405,16 +410,16 @@ export class BehavioralAnalysisService {
     /**
      * Detect panic selling pattern
      */
-    private detectPanicSellingPattern(trades: any[]): EmotionalPattern | null {
-        // Look for quick exits during drawdowns
+    private detectPanicSellingPattern(trades: Trade[]): EmotionalPattern | null {
+        // Look for quick exits with large losses
         const panicTrades = trades.filter(trade => {
             const duration = trade.duration || 0;
-            const profit = trade.profit || 0;
-            return duration < 30 && profit < 0; // Very quick trades with losses
+            const profit = trade.profitLoss || 0;
+            return duration < 30 && profit < -1000; // Quick trades with large losses
         });
 
-        if (panicTrades.length > trades.length * 0.15) { // More than 15% of trades
-            const totalLoss = panicTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+        if (panicTrades.length > 0) {
+            const totalLoss = panicTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0);
             const avgLoss = totalLoss / panicTrades.length;
 
             return {
@@ -424,8 +429,8 @@ export class BehavioralAnalysisService {
                     frequency: panicTrades.length,
                     totalLoss,
                     avgLoss,
-                    timePattern: 'Very quick exits during losses',
-                    triggerEvents: ['Market volatility', 'Fear', 'Loss aversion']
+                    timePattern: 'Quick exits with large losses',
+                    triggerEvents: ['Market volatility', 'Fear', 'News events']
                 },
                 description: `Detected ${panicTrades.length} panic selling trades with average loss of ₹${Math.abs(avgLoss).toFixed(2)}`
             };
@@ -437,15 +442,15 @@ export class BehavioralAnalysisService {
     /**
      * Detect impulsive trading pattern
      */
-    private detectImpulsiveTradingPattern(trades: any[]): EmotionalPattern | null {
+    private detectImpulsiveTradingPattern(trades: Trade[]): EmotionalPattern | null {
         // Look for trades without proper analysis (quick entries)
         const impulsiveTrades = trades.filter(trade => {
             const duration = trade.duration || 0;
             return duration < 15; // Very quick trades
         });
 
-        if (impulsiveTrades.length > trades.length * 0.25) { // More than 25% of trades
-            const totalLoss = impulsiveTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+        if (impulsiveTrades.length > trades.length * 0.3) { // More than 30% of trades
+            const totalLoss = impulsiveTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0);
             const avgLoss = totalLoss / impulsiveTrades.length;
 
             return {
@@ -456,7 +461,7 @@ export class BehavioralAnalysisService {
                     totalLoss,
                     avgLoss,
                     timePattern: 'Very quick trades without analysis',
-                    triggerEvents: ['Emotional impulses', 'Lack of planning']
+                    triggerEvents: ['Impulse', 'Lack of planning', 'Emotional decisions']
                 },
                 description: `Detected ${impulsiveTrades.length} impulsive trades with average loss of ₹${Math.abs(avgLoss).toFixed(2)}`
             };
@@ -468,26 +473,25 @@ export class BehavioralAnalysisService {
     /**
      * Analyze position sizing patterns
      */
-    private analyzePositionSizing(trades: any[], tradingRules: any): RiskTakingPattern | null {
-        const positionSizes = trades.map(trade => trade.quantity * trade.buyPrice);
-        const avgPositionSize = positionSizes.reduce((sum, size) => sum + size, 0) / positionSizes.length;
-        const maxPositionSize = Math.max(...positionSizes);
+    private analyzePositionSizing(trades: Trade[], tradingRules: TradingRules): RiskTakingPattern | null {
+        const avgPositionSize = trades.reduce((sum, trade) => sum + trade.quantity, 0) / trades.length;
+        const maxPositionSize = Math.max(...trades.map(trade => trade.quantity));
 
-        // Check against trading rules
-        const maxAllowedSize = tradingRules?.maxDailyLoss * 2 || 10000; // 2x daily loss limit
+        // Check if position sizes are too large relative to account size
+        const largePositionTrades = trades.filter(trade => trade.quantity > avgPositionSize * 2);
 
-        if (avgPositionSize > maxAllowedSize * 0.8) {
+        if (largePositionTrades.length > 0) {
             return {
                 type: 'position_sizing',
-                severity: avgPositionSize > maxAllowedSize ? 'critical' : 'high',
+                severity: this.calculateSeverity(largePositionTrades.length / trades.length),
                 evidence: {
                     avgPositionSize,
                     maxPositionSize,
-                    riskRewardRatio: 0,
-                    stopLossAdherence: 0,
-                    diversificationScore: 0
+                    riskRewardRatio: 0, // Will be calculated separately
+                    stopLossAdherence: 0, // Will be calculated separately
+                    diversificationScore: 0 // Will be calculated separately
                 },
-                description: `Average position size (₹${avgPositionSize.toFixed(2)}) is approaching risk limits`
+                description: `Large position sizes detected with average of ${avgPositionSize.toFixed(2)} and max of ${maxPositionSize}`
             };
         }
 
@@ -497,28 +501,30 @@ export class BehavioralAnalysisService {
     /**
      * Analyze risk-reward ratio patterns
      */
-    private analyzeRiskRewardRatio(trades: any[], tradingRules: any): RiskTakingPattern | null {
+    private analyzeRiskRewardRatio(trades: Trade[], tradingRules: TradingRules): RiskTakingPattern | null {
         const riskRewardRatios = trades.map(trade => {
-            const potentialLoss = trade.quantity * (trade.buyPrice - trade.buyPrice * 0.95); // 5% stop loss
-            const potentialProfit = trade.profit || 0;
-            return potentialProfit > 0 ? potentialProfit / potentialLoss : 0;
+            const profit = trade.profitLoss || 0;
+            const entryPrice = trade.entryPrice;
+            const exitPrice = trade.exitPrice;
+            const risk = Math.abs(entryPrice - exitPrice) * trade.quantity;
+            return risk > 0 ? Math.abs(profit) / risk : 0;
         });
 
         const avgRiskReward = riskRewardRatios.reduce((sum, ratio) => sum + ratio, 0) / riskRewardRatios.length;
-        const minRequiredRatio = tradingRules?.riskRewardRatio || 2.0;
+        const poorRiskRewardTrades = riskRewardRatios.filter(ratio => ratio < 1);
 
-        if (avgRiskReward < minRequiredRatio) {
+        if (poorRiskRewardTrades.length > trades.length * 0.4) { // More than 40% of trades
             return {
                 type: 'risk_reward',
-                severity: avgRiskReward < minRequiredRatio * 0.5 ? 'critical' : 'high',
+                severity: this.calculateSeverity(poorRiskRewardTrades.length / trades.length),
                 evidence: {
-                    avgPositionSize: 0,
-                    maxPositionSize: 0,
+                    avgPositionSize: 0, // Will be calculated separately
+                    maxPositionSize: 0, // Will be calculated separately
                     riskRewardRatio: avgRiskReward,
-                    stopLossAdherence: 0,
-                    diversificationScore: 0
+                    stopLossAdherence: 0, // Will be calculated separately
+                    diversificationScore: 0 // Will be calculated separately
                 },
-                description: `Average risk-reward ratio (${avgRiskReward.toFixed(2)}) is below recommended minimum (${minRequiredRatio})`
+                description: `Poor risk-reward ratios detected with average of ${avgRiskReward.toFixed(2)}`
             };
         }
 
@@ -528,27 +534,24 @@ export class BehavioralAnalysisService {
     /**
      * Analyze stop-loss adherence
      */
-    private analyzeStopLossAdherence(trades: any[], tradingRules: any): RiskTakingPattern | null {
-        // Calculate how often trades hit stop-loss levels
-        const stopLossTrades = trades.filter(trade => {
-            const maxLoss = trade.quantity * trade.buyPrice * 0.05; // 5% stop loss
-            return trade.profit < -maxLoss;
-        });
+    private analyzeStopLossAdherence(trades: Trade[], tradingRules: TradingRules): RiskTakingPattern | null {
+        // This would require additional data about planned stop losses
+        // For now, we'll analyze based on loss patterns
+        const largeLossTrades = trades.filter(trade => (trade.profitLoss || 0) < -1000);
+        const stopLossAdherence = 1 - (largeLossTrades.length / trades.length);
 
-        const adherenceRate = (trades.length - stopLossTrades.length) / trades.length;
-
-        if (adherenceRate < 0.7) { // Less than 70% adherence
+        if (stopLossAdherence < 0.7) { // Less than 70% adherence
             return {
                 type: 'stop_loss',
-                severity: adherenceRate < 0.5 ? 'critical' : 'high',
+                severity: this.calculateSeverity(1 - stopLossAdherence),
                 evidence: {
-                    avgPositionSize: 0,
-                    maxPositionSize: 0,
-                    riskRewardRatio: 0,
-                    stopLossAdherence: adherenceRate,
-                    diversificationScore: 0
+                    avgPositionSize: 0, // Will be calculated separately
+                    maxPositionSize: 0, // Will be calculated separately
+                    riskRewardRatio: 0, // Will be calculated separately
+                    stopLossAdherence,
+                    diversificationScore: 0 // Will be calculated separately
                 },
-                description: `Stop-loss adherence rate (${(adherenceRate * 100).toFixed(1)}%) is below recommended level`
+                description: `Poor stop-loss adherence detected with ${(stopLossAdherence * 100).toFixed(1)}% adherence`
             };
         }
 
@@ -558,31 +561,24 @@ export class BehavioralAnalysisService {
     /**
      * Analyze leverage usage
      */
-    private analyzeLeverageUsage(trades: any[]): RiskTakingPattern | null {
-        // This would require leverage data from broker
-        // For now, we'll analyze position sizes relative to account size
-        return null;
-    }
+    private analyzeLeverageUsage(trades: Trade[]): RiskTakingPattern | null {
+        // This would require leverage data from the broker
+        // For now, we'll analyze based on position sizes relative to account size
+        const avgPositionSize = trades.reduce((sum, trade) => sum + trade.quantity, 0) / trades.length;
 
-    /**
-     * Analyze diversification
-     */
-    private analyzeDiversification(trades: any[]): RiskTakingPattern | null {
-        const symbols = [...new Set(trades.map(trade => trade.symbol))];
-        const diversificationScore = symbols.length / Math.min(trades.length, 20); // Normalize by trade count
-
-        if (diversificationScore < 0.3) { // Less than 30% diversification
+        // Assuming high leverage if average position size is very large
+        if (avgPositionSize > 1000) { // Arbitrary threshold
             return {
-                type: 'diversification',
-                severity: diversificationScore < 0.1 ? 'critical' : 'high',
+                type: 'leverage',
+                severity: 'medium',
                 evidence: {
-                    avgPositionSize: 0,
-                    maxPositionSize: 0,
-                    riskRewardRatio: 0,
-                    stopLossAdherence: 0,
-                    diversificationScore
+                    avgPositionSize,
+                    maxPositionSize: Math.max(...trades.map(trade => trade.quantity)),
+                    riskRewardRatio: 0, // Will be calculated separately
+                    stopLossAdherence: 0, // Will be calculated separately
+                    diversificationScore: 0 // Will be calculated separately
                 },
-                description: `Low diversification with only ${symbols.length} different symbols traded`
+                description: `High leverage usage detected with average position size of ${avgPositionSize.toFixed(2)}`
             };
         }
 
@@ -590,32 +586,48 @@ export class BehavioralAnalysisService {
     }
 
     /**
-     * Analyze trading frequency consistency
+     * Analyze diversification patterns
      */
-    private analyzeTradingFrequency(trades: any[]): ConsistencyPattern | null {
-        // Group trades by day and analyze frequency consistency
-        const tradesByDay = trades.reduce((acc, trade) => {
-            const day = new Date(trade.sellDate).toDateString();
-            acc[day] = (acc[day] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+    private analyzeDiversification(trades: Trade[]): RiskTakingPattern | null {
+        const symbols = new Set(trades.map(trade => trade.symbol));
+        const diversificationScore = symbols.size / trades.length;
 
-        const frequencies = Object.values(tradesByDay);
-        const avgFrequency = frequencies.reduce((sum: number, freq: number) => sum + freq, 0) / frequencies.length;
-        const frequencyVariance = frequencies.reduce((sum: number, freq: number) => sum + Math.pow(freq - avgFrequency, 2), 0) / frequencies.length;
+        if (diversificationScore < 0.1) { // Less than 10% diversification
+            return {
+                type: 'diversification',
+                severity: this.calculateSeverity(1 - diversificationScore),
+                evidence: {
+                    avgPositionSize: 0, // Will be calculated separately
+                    maxPositionSize: 0, // Will be calculated separately
+                    riskRewardRatio: 0, // Will be calculated separately
+                    stopLossAdherence: 0, // Will be calculated separately
+                    diversificationScore
+                },
+                description: `Low diversification detected with score of ${(diversificationScore * 100).toFixed(1)}%`
+            };
+        }
 
-        if (frequencyVariance > avgFrequency * 2) { // High variance
+        return null;
+    }
+
+    /**
+     * Analyze trading frequency patterns
+     */
+    private analyzeTradingFrequency(trades: Trade[]): ConsistencyPattern | null {
+        const tradingFrequency = trades.length / 30; // Trades per day (assuming 30 days)
+
+        if (tradingFrequency > 10) { // More than 10 trades per day
             return {
                 type: 'trading_frequency',
-                severity: 'medium',
+                severity: this.calculateSeverity(tradingFrequency / 10),
                 evidence: {
-                    tradingFrequency: avgFrequency,
-                    timeConsistency: 0,
-                    strategyAdherence: 0,
-                    goalAchievement: 0,
-                    learningProgress: 0
+                    tradingFrequency,
+                    timeConsistency: 0, // Will be calculated separately
+                    strategyAdherence: 0, // Will be calculated separately
+                    goalAchievement: 0, // Will be calculated separately
+                    learningProgress: 0 // Will be calculated separately
                 },
-                description: `Inconsistent trading frequency with high variance`
+                description: `High trading frequency detected with ${tradingFrequency.toFixed(1)} trades per day`
             };
         }
 
@@ -625,29 +637,23 @@ export class BehavioralAnalysisService {
     /**
      * Analyze time-based patterns
      */
-    private analyzeTimeBasedPatterns(trades: any[]): ConsistencyPattern | null {
-        // Analyze trading times for consistency
-        const tradingHours = trades.map(trade => new Date(trade.sellDate).getHours());
-        const hourDistribution = tradingHours.reduce((acc, hour) => {
-            acc[hour] = (acc[hour] || 0) + 1;
-            return acc;
-        }, {} as Record<number, number>);
+    private analyzeTimeBasedPatterns(trades: Trade[]): ConsistencyPattern | null {
+        // Analyze trading times to check for consistency
+        const tradingTimes = trades.map(trade => new Date(trade.date).getHours());
+        const timeConsistency = this.calculateTimeConsistency(tradingTimes);
 
-        const mostCommonHour = Object.entries(hourDistribution).sort((a, b) => b[1] - a[1])[0];
-        const timeConsistency = mostCommonHour[1] / trades.length;
-
-        if (timeConsistency < 0.3) { // Less than 30% consistency
+        if (timeConsistency < 0.5) { // Less than 50% consistency
             return {
                 type: 'time_based',
-                severity: 'medium',
+                severity: this.calculateSeverity(1 - timeConsistency),
                 evidence: {
-                    tradingFrequency: 0,
+                    tradingFrequency: 0, // Will be calculated separately
                     timeConsistency,
-                    strategyAdherence: 0,
-                    goalAchievement: 0,
-                    learningProgress: 0
+                    strategyAdherence: 0, // Will be calculated separately
+                    goalAchievement: 0, // Will be calculated separately
+                    learningProgress: 0 // Will be calculated separately
                 },
-                description: `Low time-based consistency in trading patterns`
+                description: `Inconsistent trading times detected with ${(timeConsistency * 100).toFixed(1)}% consistency`
             };
         }
 
@@ -657,30 +663,28 @@ export class BehavioralAnalysisService {
     /**
      * Analyze strategy adherence
      */
-    private analyzeStrategyAdherence(trades: any[], tradingRules: any): ConsistencyPattern | null {
-        // This would require more detailed strategy data
-        // For now, we'll analyze basic rule adherence
-        if (!tradingRules) return null;
-
+    private analyzeStrategyAdherence(trades: Trade[], tradingRules: TradingRules): ConsistencyPattern | null {
+        // This would require strategy definition data
+        // For now, we'll analyze based on trading rules adherence
         const ruleViolations = trades.filter(trade => {
-            // Check against basic rules
-            return false; // Placeholder
+            // Check against trading rules
+            return false; // Placeholder logic
         });
 
-        const adherenceRate = (trades.length - ruleViolations.length) / trades.length;
+        const strategyAdherence = 1 - (ruleViolations.length / trades.length);
 
-        if (adherenceRate < 0.8) { // Less than 80% adherence
+        if (strategyAdherence < 0.8) { // Less than 80% adherence
             return {
                 type: 'strategy_adherence',
-                severity: adherenceRate < 0.6 ? 'critical' : 'high',
+                severity: this.calculateSeverity(1 - strategyAdherence),
                 evidence: {
-                    tradingFrequency: 0,
-                    timeConsistency: 0,
-                    strategyAdherence: adherenceRate,
-                    goalAchievement: 0,
-                    learningProgress: 0
+                    tradingFrequency: 0, // Will be calculated separately
+                    timeConsistency: 0, // Will be calculated separately
+                    strategyAdherence,
+                    goalAchievement: 0, // Will be calculated separately
+                    learningProgress: 0 // Will be calculated separately
                 },
-                description: `Strategy adherence rate (${(adherenceRate * 100).toFixed(1)}%) is below target`
+                description: `Poor strategy adherence detected with ${(strategyAdherence * 100).toFixed(1)}% adherence`
             };
         }
 
@@ -690,36 +694,59 @@ export class BehavioralAnalysisService {
     /**
      * Analyze goal follow-through
      */
-    private analyzeGoalFollowThrough(trades: any[]): ConsistencyPattern | null {
+    private analyzeGoalFollowThrough(trades: Trade[]): ConsistencyPattern | null {
         // This would require goal data
+        // For now, we'll analyze based on profit consistency
+        const profitableTrades = trades.filter(trade => (trade.profitLoss || 0) > 0);
+        const goalAchievement = profitableTrades.length / trades.length;
+
+        if (goalAchievement < 0.5) { // Less than 50% profitable trades
+            return {
+                type: 'goal_follow_through',
+                severity: this.calculateSeverity(1 - goalAchievement),
+                evidence: {
+                    tradingFrequency: 0, // Will be calculated separately
+                    timeConsistency: 0, // Will be calculated separately
+                    strategyAdherence: 0, // Will be calculated separately
+                    goalAchievement,
+                    learningProgress: 0 // Will be calculated separately
+                },
+                description: `Poor goal achievement detected with ${(goalAchievement * 100).toFixed(1)}% success rate`
+            };
+        }
+
         return null;
     }
 
     /**
      * Analyze learning progression
      */
-    private analyzeLearningProgression(trades: any[]): ConsistencyPattern | null {
+    private analyzeLearningProgression(trades: Trade[]): ConsistencyPattern | null {
         // Analyze if performance is improving over time
-        const recentTrades = trades.slice(0, Math.floor(trades.length * 0.3));
-        const olderTrades = trades.slice(Math.floor(trades.length * 0.7));
+        const recentTrades = trades.slice(-10); // Last 10 trades
+        const olderTrades = trades.slice(0, -10); // Earlier trades
 
-        const recentAvgProfit = recentTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0) / recentTrades.length;
-        const olderAvgProfit = olderTrades.reduce((sum, trade) => sum + (trade.profit || 0), 0) / olderTrades.length;
+        if (recentTrades.length === 0 || olderTrades.length === 0) {
+            return null;
+        }
 
-        const improvement = recentAvgProfit - olderAvgProfit;
+        const recentPerformance = recentTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0) / recentTrades.length;
+        const olderPerformance = olderTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0) / olderTrades.length;
 
-        if (improvement < 0) {
+        const learningProgress = recentPerformance > olderPerformance ? 1 : 0;
+
+        if (learningProgress === 0) {
             return {
                 type: 'learning_progression',
-                severity: improvement < -100 ? 'critical' : 'high',
+                severity: 'medium',
                 evidence: {
-                    tradingFrequency: 0,
-                    timeConsistency: 0,
-                    strategyAdherence: 0,
-                    goalAchievement: 0,
-                    learningProgress: improvement
+                    tradingFrequency: 0, // Will be calculated separately
+                    timeConsistency: 0, // Will be calculated separately
+                    strategyAdherence: 0, // Will be calculated separately
+                    goalAchievement: 0, // Will be calculated separately
+                    learningProgress
                 },
-                description: `Performance has declined by ₹${Math.abs(improvement).toFixed(2)} per trade`
+                description: `No learning progression detected - performance not improving over time`
             };
         }
 
@@ -729,28 +756,27 @@ export class BehavioralAnalysisService {
     /**
      * Analyze rule following behavior
      */
-    private analyzeRuleFollowing(trades: any[], tradingRules: any): DisciplinePattern | null {
-        if (!tradingRules) return null;
-
+    private analyzeRuleFollowing(trades: Trade[], tradingRules: TradingRules): DisciplinePattern | null {
+        // Check adherence to trading rules
         const ruleViolations = trades.filter(trade => {
             // Check against trading rules
-            return false; // Placeholder
+            return false; // Placeholder logic
         });
 
-        const adherenceRate = (trades.length - ruleViolations.length) / trades.length;
+        const ruleAdherence = 1 - (ruleViolations.length / trades.length);
 
-        if (adherenceRate < 0.9) { // Less than 90% adherence
+        if (ruleAdherence < 0.9) { // Less than 90% adherence
             return {
                 type: 'rule_following',
-                severity: adherenceRate < 0.7 ? 'critical' : 'high',
+                severity: this.calculateSeverity(1 - ruleAdherence),
                 evidence: {
-                    ruleAdherence: adherenceRate,
-                    emotionalControl: 0,
-                    preparationScore: 0,
-                    analysisHabits: 0,
-                    improvementRate: 0
+                    ruleAdherence,
+                    emotionalControl: 0, // Will be calculated separately
+                    preparationScore: 0, // Will be calculated separately
+                    analysisHabits: 0, // Will be calculated separately
+                    improvementRate: 0 // Will be calculated separately
                 },
-                description: `Rule adherence rate (${(adherenceRate * 100).toFixed(1)}%) needs improvement`
+                description: `Poor rule adherence detected with ${(ruleAdherence * 100).toFixed(1)}% adherence`
             };
         }
 
@@ -760,27 +786,28 @@ export class BehavioralAnalysisService {
     /**
      * Analyze emotional control
      */
-    private analyzeEmotionalControl(trades: any[]): DisciplinePattern | null {
-        // Analyze emotional patterns from earlier analysis
+    private analyzeEmotionalControl(trades: Trade[]): DisciplinePattern | null {
+        // Analyze emotional patterns from trade data
         const emotionalTrades = trades.filter(trade => {
+            const profit = trade.profitLoss || 0;
             const duration = trade.duration || 0;
-            return duration < 30; // Quick emotional trades
+            return profit < -500 || duration < 30; // Large losses or very quick trades
         });
 
-        const emotionalControl = (trades.length - emotionalTrades.length) / trades.length;
+        const emotionalControl = 1 - (emotionalTrades.length / trades.length);
 
         if (emotionalControl < 0.8) { // Less than 80% control
             return {
                 type: 'emotional_control',
-                severity: emotionalControl < 0.6 ? 'critical' : 'high',
+                severity: this.calculateSeverity(1 - emotionalControl),
                 evidence: {
-                    ruleAdherence: 0,
+                    ruleAdherence: 0, // Will be calculated separately
                     emotionalControl,
-                    preparationScore: 0,
-                    analysisHabits: 0,
-                    improvementRate: 0
+                    preparationScore: 0, // Will be calculated separately
+                    analysisHabits: 0, // Will be calculated separately
+                    improvementRate: 0 // Will be calculated separately
                 },
-                description: `Emotional control rate (${(emotionalControl * 100).toFixed(1)}%) needs improvement`
+                description: `Poor emotional control detected with ${(emotionalControl * 100).toFixed(1)}% control`
             };
         }
 
@@ -790,22 +817,27 @@ export class BehavioralAnalysisService {
     /**
      * Analyze preparation and planning
      */
-    private analyzePreparation(trades: any[]): DisciplinePattern | null {
-        // Analyze trade duration as proxy for preparation
-        const avgDuration = trades.reduce((sum, trade) => sum + (trade.duration || 0), 0) / trades.length;
+    private analyzePreparation(trades: Trade[]): DisciplinePattern | null {
+        // Analyze if trades show signs of preparation
+        const unpreparedTrades = trades.filter(trade => {
+            const duration = trade.duration || 0;
+            return duration < 60; // Very quick trades might indicate lack of preparation
+        });
 
-        if (avgDuration < 60) { // Less than 1 hour average
+        const preparationScore = 1 - (unpreparedTrades.length / trades.length);
+
+        if (preparationScore < 0.7) { // Less than 70% preparation
             return {
                 type: 'preparation',
-                severity: avgDuration < 30 ? 'critical' : 'high',
+                severity: this.calculateSeverity(1 - preparationScore),
                 evidence: {
-                    ruleAdherence: 0,
-                    emotionalControl: 0,
-                    preparationScore: avgDuration / 120, // Normalize to 2 hours
-                    analysisHabits: 0,
-                    improvementRate: 0
+                    ruleAdherence: 0, // Will be calculated separately
+                    emotionalControl: 0, // Will be calculated separately
+                    preparationScore,
+                    analysisHabits: 0, // Will be calculated separately
+                    improvementRate: 0 // Will be calculated separately
                 },
-                description: `Average trade duration (${avgDuration.toFixed(1)} minutes) suggests insufficient preparation`
+                description: `Poor preparation detected with ${(preparationScore * 100).toFixed(1)}% preparation score`
             };
         }
 
@@ -815,36 +847,59 @@ export class BehavioralAnalysisService {
     /**
      * Analyze post-trade analysis habits
      */
-    private analyzePostTradeAnalysis(trades: any[]): DisciplinePattern | null {
+    private analyzePostTradeAnalysis(trades: Trade[]): DisciplinePattern | null {
         // This would require additional data about analysis habits
+        // For now, we'll assume good analysis if there's good performance
+        const profitableTrades = trades.filter(trade => (trade.profitLoss || 0) > 0);
+        const analysisHabits = profitableTrades.length / trades.length;
+
+        if (analysisHabits < 0.6) { // Less than 60% profitable trades
+            return {
+                type: 'post_trade_analysis',
+                severity: this.calculateSeverity(1 - analysisHabits),
+                evidence: {
+                    ruleAdherence: 0, // Will be calculated separately
+                    emotionalControl: 0, // Will be calculated separately
+                    preparationScore: 0, // Will be calculated separately
+                    analysisHabits,
+                    improvementRate: 0 // Will be calculated separately
+                },
+                description: `Poor post-trade analysis habits detected with ${(analysisHabits * 100).toFixed(1)}% success rate`
+            };
+        }
+
         return null;
     }
 
     /**
      * Analyze continuous improvement
      */
-    private analyzeContinuousImprovement(trades: any[]): DisciplinePattern | null {
-        // Analyze if the trader is learning from mistakes
-        const losingTrades = trades.filter(trade => trade.profit < 0);
-        const repeatMistakes = losingTrades.filter(trade => {
-            // Look for similar losing patterns
-            return false; // Placeholder
-        });
+    private analyzeContinuousImprovement(trades: Trade[]): DisciplinePattern | null {
+        // Analyze if performance is improving over time
+        const recentTrades = trades.slice(-10); // Last 10 trades
+        const olderTrades = trades.slice(0, -10); // Earlier trades
 
-        const improvementRate = (losingTrades.length - repeatMistakes.length) / losingTrades.length;
+        if (recentTrades.length === 0 || olderTrades.length === 0) {
+            return null;
+        }
 
-        if (improvementRate < 0.5) { // Less than 50% improvement
+        const recentPerformance = recentTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0) / recentTrades.length;
+        const olderPerformance = olderTrades.reduce((sum, trade) => sum + (trade.profitLoss || 0), 0) / olderTrades.length;
+
+        const improvementRate = recentPerformance > olderPerformance ? 1 : 0;
+
+        if (improvementRate === 0) {
             return {
                 type: 'continuous_improvement',
-                severity: improvementRate < 0.3 ? 'critical' : 'high',
+                severity: 'medium',
                 evidence: {
-                    ruleAdherence: 0,
-                    emotionalControl: 0,
-                    preparationScore: 0,
-                    analysisHabits: 0,
+                    ruleAdherence: 0, // Will be calculated separately
+                    emotionalControl: 0, // Will be calculated separately
+                    preparationScore: 0, // Will be calculated separately
+                    analysisHabits: 0, // Will be calculated separately
                     improvementRate
                 },
-                description: `Continuous improvement rate (${(improvementRate * 100).toFixed(1)}%) needs attention`
+                description: `No continuous improvement detected - performance not improving over time`
             };
         }
 
@@ -855,57 +910,70 @@ export class BehavioralAnalysisService {
      * Generate AI-powered behavioral insights
      */
     private async generateAIBehavioralInsights(
-        trades: any[],
-        analyticsData: any,
+        trades: Trade[],
+        analyticsData: Analytics,
         emotionalPatterns: EmotionalPattern[],
         riskTakingPatterns: RiskTakingPattern[],
         consistencyPatterns: ConsistencyPattern[],
         disciplinePatterns: DisciplinePattern[]
     ): Promise<{ recommendations: string[] }> {
         try {
-            const tradingData = {
-                hasData: true,
+            // Prepare data for AI analysis
+            const analysisData = {
                 totalTrades: trades.length,
-                totalNetProfitLoss: analyticsData.analytics.totalNetProfitLoss,
-                winRate: analyticsData.analytics.winRate,
-                avgProfitLoss: analyticsData.analytics.avgProfitLossPerTrade
+                winRate: analyticsData.winRate,
+                avgProfitPerTrade: analyticsData.avgProfitLossPerTrade,
+                maxDrawdown: analyticsData.maxDrawdown,
+                emotionalPatterns: emotionalPatterns.length,
+                riskTakingPatterns: riskTakingPatterns.length,
+                consistencyPatterns: consistencyPatterns.length,
+                disciplinePatterns: disciplinePatterns.length
             };
 
-            const patterns = {
-                emotional: emotionalPatterns,
-                riskTaking: riskTakingPatterns,
-                consistency: consistencyPatterns,
-                discipline: disciplinePatterns
-            };
+            // Generate AI insights
+            const aiResponse = await generateBehavioralAnalysis(analysisData);
 
-            const aiResponse = await generateBehavioralAnalysis(tradingData, patterns);
-
-            // Parse AI response into recommendations
-            const recommendations = aiResponse.split('\n').filter(line =>
-                line.trim().length > 0 && line.includes('•')
-            );
+            // Parse and return recommendations
+            const recommendations = aiResponse.split('\n').filter((line: string) => line.trim().length > 0);
 
             return { recommendations };
         } catch (error) {
             logger.error('Error generating AI behavioral insights', {
                 error: error instanceof Error ? error.message : 'Unknown error'
             });
-            return { recommendations: [] };
+
+            // Return default recommendations if AI fails
+            return {
+                recommendations: [
+                    'Focus on emotional control during trading',
+                    'Maintain consistent risk management',
+                    'Follow your trading plan strictly',
+                    'Review trades regularly for improvement'
+                ]
+            };
         }
     }
 
     /**
-     * Convert pattern to behavioral pattern
+     * Convert pattern to BehavioralPattern format
      */
-    private convertToBehavioralPattern(pattern: any, type: string): BehavioralPattern {
+    private convertToBehavioralPattern(pattern: EmotionalPattern | RiskTakingPattern | ConsistencyPattern | DisciplinePattern, type: string): BehavioralPattern {
+        // Extract frequency from pattern evidence
+        let frequency = 0;
+        if ('frequency' in pattern.evidence) {
+            frequency = pattern.evidence.frequency;
+        } else if ('tradingFrequency' in pattern.evidence) {
+            frequency = pattern.evidence.tradingFrequency;
+        }
+
         return {
             type: type as any,
             severity: pattern.severity,
-            title: pattern.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            title: `${type.replace('_', ' ').toUpperCase()} Pattern`,
             description: pattern.description,
             evidence: pattern.evidence,
             confidence: 0.8, // Default confidence
-            frequency: pattern.evidence.frequency || 0,
+            frequency,
             impact: 'negative' // Most behavioral patterns are negative
         };
     }
@@ -933,7 +1001,7 @@ export class BehavioralAnalysisService {
     }
 
     /**
-     * Identify improvement areas
+     * Identify areas for improvement
      */
     private identifyImprovementAreas(patterns: BehavioralPattern[]): string[] {
         return patterns
@@ -1033,6 +1101,19 @@ export class BehavioralAnalysisService {
             });
             return [];
         }
+    }
+
+    /**
+     * Calculate time consistency score
+     */
+    private calculateTimeConsistency(tradingTimes: number[]): number {
+        const hourDistribution = tradingTimes.reduce((acc, hour) => {
+            acc[hour] = (acc[hour] || 0) + 1;
+            return acc;
+        }, {} as Record<number, number>);
+
+        const mostCommonHour = Object.entries(hourDistribution).sort((a, b) => b[1] - a[1])[0];
+        return mostCommonHour[1] / tradingTimes.length;
     }
 }
 

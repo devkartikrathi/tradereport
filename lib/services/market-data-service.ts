@@ -94,7 +94,7 @@ export interface MarketContext {
 }
 
 export class MarketDataService {
-    private cache: Map<string, { data: any; timestamp: number }> = new Map();
+    private cache: Map<string, { data: Record<string, unknown>; timestamp: number }> = new Map();
     private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
     /**
@@ -205,7 +205,7 @@ export class MarketDataService {
     async analyzeVolatility(marketData: MarketData): Promise<VolatilityAnalysis> {
         try {
             const vix = marketData.volatility.vix;
-            const niftyVol = marketData.volatility.niftyVolatility;
+            // const niftyVol = marketData.volatility.niftyVolatility;
 
             // Determine volatility level
             let currentLevel: 'low' | 'moderate' | 'high' | 'extreme';

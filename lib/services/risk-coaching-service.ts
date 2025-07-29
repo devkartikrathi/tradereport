@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { riskManagementService } from './risk-management-service';
-import { generateRiskAnalysis } from '@/lib/gemini';
+// import { generateRiskAnalysis } from '@/lib/gemini';
 import { logger } from '@/lib/logger';
 
 export interface RiskGoal {
@@ -393,7 +393,7 @@ export class RiskCoachingService {
     /**
      * Estimate improvement timeline
      */
-    private estimateTimeline(analysis: any, goals: RiskGoal[]): string {
+    private estimateTimeline(_analysis: any, goals: RiskGoal[]): string {
         const criticalGoals = goals.filter(goal => goal.category === 'position_sizing' || goal.category === 'stop_loss');
         const highPriorityGoals = goals.filter(goal => goal.category === 'risk_reward' || goal.category === 'portfolio_diversification');
 
