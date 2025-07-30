@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { goalInsightsService } from '@/lib/services/goal-insights-service';
+import { subscriptionMiddleware } from '@/lib/middleware/subscription-middleware';
 import { logger } from '@/lib/logger';
 
 export async function GET(request: Request) {
@@ -9,6 +10,19 @@ export async function GET(request: Request) {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for performance goals feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for performance goals',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         // Get goal ID from query params
@@ -48,6 +62,19 @@ export async function POST(request: Request) {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for performance goals feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for performance goals',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         // Parse request body

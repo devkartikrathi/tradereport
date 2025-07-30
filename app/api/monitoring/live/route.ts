@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { monitoringService } from '@/lib/services/monitoring-service';
 import { alertService } from '@/lib/services/alert-service';
 import { notificationService } from '@/lib/services/notification-service';
+import { subscriptionMiddleware } from '@/lib/middleware/subscription-middleware';
 import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
@@ -11,6 +12,19 @@ export async function GET(request: NextRequest) {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for real-time monitoring feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for real-time monitoring',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         // Get query parameters
@@ -122,6 +136,19 @@ export async function POST(request: NextRequest) {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for real-time monitoring feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for real-time monitoring',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         const { action } = await request.json();

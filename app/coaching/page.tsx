@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, TrendingUp, TrendingDown, Target, Lightbulb, RefreshCw, AlertTriangle, CheckCircle, XCircle, Brain, Zap, Shield } from "lucide-react";
 import Sidebar from "@/components/navigation/sidebar";
+import { FeatureGating } from "@/components/subscription/feature-gating";
 
 interface CoachingInsight {
   id: string;
@@ -119,8 +120,9 @@ export default function CoachingPage() {
 
   return (
     <Sidebar>
-      <div className="container mx-auto p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
+      <FeatureGating featureName="ai_coaching">
+        <div className="container mx-auto p-6">
+          <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div className="space-y-2">
               <h1 className="text-3xl font-bold tracking-tight">AI Coaching Corner</h1>
@@ -365,6 +367,7 @@ export default function CoachingPage() {
           )}
         </div>
       </div>
+      </FeatureGating>
     </Sidebar>
   );
 } 

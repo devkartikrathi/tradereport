@@ -22,10 +22,13 @@ model User {
   brokerConnections  BrokerConnection[]
   tradingRules       TradingRuleSet?
   chatMessages       ChatMessage[]
-  Alert              Alert[]
+  alerts             Alert[]
   behavioralInsights BehavioralInsight[]
   riskAssessments    RiskAssessment[]
-  PerformanceGoal    PerformanceGoal[]
+  performanceGoals   PerformanceGoal[]
+  subscription       Subscription?
+  payments           Payment[]
+  FeatureAccess      FeatureAccess[]
 }
 
 model Trade {
@@ -251,4 +254,122 @@ model PerformanceGoal {
   @@index([userId, category])
   @@index([userId, isActive])
   @@index([userId, createdAt])
+}
+
+model Plan {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  description   String?
+  price         Float
+  currency      String         @default("INR")
+  billingCycle  String // "monthly", "quarterly", "yearly"
+  features      String[] // Array of feature names
+  isActive      Boolean        @default(true)
+  maxUsers      Int? // null for unlimited
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+  payments      Payment[]
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model Subscription {
+  id               String             @id @default(cuid())
+  status           SubscriptionStatus @default(INCOMPLETE)
+  currentPeriodEnd DateTime?
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id])
+  payments         Payment[]
+
+  @@index([status])
+  @@index([userId])
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  subscriptionId       String?
+  subscription         Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan          @relation(fields: [planId], references: [id])
+  userId               String
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phonePeTransactionId String        @unique
+  orderId              String        @unique
+  paymentUrl           String?
+  signature            String?
+  amount               Float
+  currency             String        @default("INR")
+  status               PaymentStatus @default(PENDING)
+  paymentMethod        String? // "phonepe", "stripe", "razorpay", etc.
+  transactionId        String?
+  metadata             Json? // Additional payment data
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([subscriptionId])
+  @@index([planId])
+  @@index([userId])
+  @@index([status])
+  @@index([orderId])
+  @@index([phonePeTransactionId])
+  @@index([createdAt])
+}
+
+model WebhookEvent {
+  id           String    @id @default(cuid())
+  eventType    String // "payment.success", "payment.failed", etc.
+  payload      Json
+  signature    String
+  status       String    @default("PENDING") // "PENDING", "PROCESSED", "FAILED"
+  processedAt  DateTime?
+  errorMessage String?
+  retryCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model FeatureAccess {
+  id              String    @id @default(cuid())
+  userId          String
+  featureName     String
+  isAccessible    Boolean   @default(false)
+  accessGrantedAt DateTime?
+  accessExpiresAt DateTime?
+  metadata        Json? // For additional feature access data
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, featureName])
+  @@index([userId])
+  @@index([featureName])
+  @@index([isAccessible])
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
 }

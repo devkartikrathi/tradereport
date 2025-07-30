@@ -19,6 +19,7 @@ import {
   Target,
   Zap,
   Eye,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -89,6 +90,12 @@ const navigation = [
     href: "/profile",
     icon: User,
     description: "Manage your account and settings",
+  },
+  {
+    name: "Pricing",
+    href: "/pricing",
+    icon: Star,
+    description: "View subscription plans and pricing",
   },
   {
     name: "Trading Rules",

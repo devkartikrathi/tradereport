@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { behavioralAnalysisService } from '@/lib/services/behavioral-analysis-service';
+import { subscriptionMiddleware } from '@/lib/middleware/subscription-middleware';
 import { logger } from '@/lib/logger';
 
 export async function GET() {
@@ -9,6 +10,19 @@ export async function GET() {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for behavioral analysis feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for behavioral analysis',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         // Get behavioral insights
@@ -37,6 +51,19 @@ export async function POST() {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Validate subscription for behavioral analysis feature
+        const validation = await subscriptionMiddleware.validateSubscription(userId);
+        if (!validation.hasAccess) {
+            return NextResponse.json(
+                {
+                    error: 'Premium subscription required for behavioral analysis',
+                    details: validation.error,
+                    upgradeRequired: true
+                },
+                { status: 403 }
+            );
         }
 
         // Trigger behavioral analysis

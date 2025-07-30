@@ -162,3 +162,5 @@ docs/
 
 .cursor/
 .bmad-core/
+
+__tests__/

@@ -16,6 +16,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { format } from "date-fns";
 import ResetDataButton from "@/components/reset-data-button";
+import { FeatureGating } from "@/components/subscription/feature-gating";
 
 interface RiskAssessment {
   id: string;
@@ -147,7 +148,8 @@ export default async function RiskManagementPage() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar>
-        <div className="flex-1 overflow-auto">
+        <FeatureGating featureName="risk_management">
+          <div className="flex-1 overflow-auto">
           <div className="container mx-auto p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -423,6 +425,7 @@ export default async function RiskManagementPage() {
             </Tabs>
           </div>
         </div>
+      </FeatureGating>
       </Sidebar>
     </div>
   );
